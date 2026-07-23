@@ -34,6 +34,9 @@ packages = ["src/cross_talker"]
 addopts = "-q"
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "live: makes billable requests to external model providers",
+]
 
 [tool.ruff]
 line-length = 100
@@ -41,4 +44,3 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC"]
-

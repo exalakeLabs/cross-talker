@@ -15,7 +15,7 @@ other services can be added without changing the round-robin logic.
 3. The model must inspect factual claims and reasoning, then return a corrected standalone answer.
 4. The API returns the full round history and the final answer from each provider.
 
-Every run is also written to SQLite. The audit record includes the original prompt, each exact
+Every run is also written to SQLite under `./data/cross_talker.db`. The audit record includes the original prompt, each exact
 provider-specific prompt, every answer, provider and model names, iteration level, status, and UTC
 request/response timestamps. Configure its location with `CROSS_TALKER_DATABASE_PATH`.
 
@@ -94,4 +94,22 @@ For API configuration, register the adapter in `cross_talker.factory.build_cross
 ```bash
 pytest
 ruff check .
+```
+
+The default suite exercises the HTTP API and SQLite persistence with a deterministic fake
+provider. It never spends provider credits. To run the opt-in live test through the same HTTP
+endpoint using the configured OpenAI account:
+
+```bash
+RUN_LIVE_TESTS=1 pytest tests/test_live_service.py -v -s
+```
+
+The live test randomly selects a question and answer format, sends the resulting prompt, verifies
+the API response, and retrieves the saved exchange through `GET /v1/runs/{run_id}`. It prints the
+prompt and its seed, and uses a temporary SQLite database that pytest removes afterward. To replay
+the same randomly selected prompt:
+
+```bash
+LIVE_TEST_SEED=<printed-seed> RUN_LIVE_TESTS=1 \
+  pytest tests/test_live_service.py -v -s
 ```

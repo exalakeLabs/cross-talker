@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     default_rounds: int = Field(default=1, ge=0)
     max_rounds: int = Field(default=5, ge=0)
     request_timeout_seconds: float = Field(default=60.0, gt=0)
-    database_path: str = "cross_talker.db"
+    database_path: str = "data/cross_talker.db"
 
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4.1-mini", validation_alias="OPENAI_MODEL")

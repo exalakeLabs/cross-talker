@@ -64,6 +64,18 @@ async def test_rejects_rounds_over_limit() -> None:
         await service.ask("Hello", rounds=3)
 
 
-def test_requires_two_providers() -> None:
-    with pytest.raises(ConfigurationError, match="at least two"):
-        CrossTalker([FakeProvider("alpha")])
+@pytest.mark.asyncio
+async def test_single_provider_supports_initial_answer_only() -> None:
+    service = CrossTalker([FakeProvider("alpha")])
+
+    result = await service.ask("Hello", rounds=0)
+
+    assert len(result.final_answers) == 1
+
+
+@pytest.mark.asyncio
+async def test_single_provider_rejects_cross_check_rounds() -> None:
+    service = CrossTalker([FakeProvider("alpha")])
+
+    with pytest.raises(ConfigurationError, match="require at least two"):
+        await service.ask("Hello", rounds=1)

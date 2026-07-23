@@ -30,8 +30,8 @@ class CrossTalkRequest(BaseModel):
     def validate_providers(self) -> CrossTalkRequest:
         if self.providers is not None:
             cleaned = [name.strip().lower() for name in self.providers if name.strip()]
-            if len(cleaned) < 2:
-                raise ValueError("At least two providers are required for cross-checking")
+            if not cleaned:
+                raise ValueError("At least one provider is required")
             if len(cleaned) != len(set(cleaned)):
                 raise ValueError("Provider names must be unique")
             self.providers = cleaned

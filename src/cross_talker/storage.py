@@ -17,6 +17,7 @@ class SQLiteRepository:
     """Durable audit storage for runs, prompts, and provider answers."""
 
     def __init__(self, database_path: str | Path) -> None:
+        self._write_lock = asyncio.Lock()
         requested_path = str(database_path)
         self._use_uri = requested_path == ":memory:"
         self.database_path = (
@@ -24,6 +25,11 @@ class SQLiteRepository:
             if self._use_uri
             else requested_path
         )
+        if not self._use_uri:
+            Path(self.database_path).expanduser().parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
         self._keeper = (
             sqlite3.connect(self.database_path, uri=True, check_same_thread=False)
             if self._use_uri
@@ -80,9 +86,10 @@ class SQLiteRepository:
     async def create_run(self, original_prompt: str, rounds_requested: int) -> tuple[str, datetime]:
         run_id = str(uuid4())
         created_at = utc_now()
-        await asyncio.to_thread(
-            self._create_run_sync, run_id, original_prompt, rounds_requested, created_at
-        )
+        async with self._write_lock:
+            await asyncio.to_thread(
+                self._create_run_sync, run_id, original_prompt, rounds_requested, created_at
+            )
         return run_id, created_at
 
     def _create_run_sync(
@@ -103,16 +110,17 @@ class SQLiteRepository:
     ) -> tuple[str, datetime]:
         exchange_id = str(uuid4())
         requested_at = utc_now()
-        await asyncio.to_thread(
-            self._begin_exchange_sync,
-            exchange_id,
-            run_id,
-            provider,
-            model,
-            round_number,
-            prompt,
-            requested_at,
-        )
+        async with self._write_lock:
+            await asyncio.to_thread(
+                self._begin_exchange_sync,
+                exchange_id,
+                run_id,
+                provider,
+                model,
+                round_number,
+                prompt,
+                requested_at,
+            )
         return exchange_id, requested_at
 
     def _begin_exchange_sync(
@@ -146,9 +154,10 @@ class SQLiteRepository:
 
     async def finish_exchange(self, exchange_id: str, answer: str) -> datetime:
         responded_at = utc_now()
-        await asyncio.to_thread(
-            self._finish_exchange_sync, exchange_id, answer, responded_at
-        )
+        async with self._write_lock:
+            await asyncio.to_thread(
+                self._finish_exchange_sync, exchange_id, answer, responded_at
+            )
         return responded_at
 
     def _finish_exchange_sync(
@@ -166,9 +175,10 @@ class SQLiteRepository:
 
     async def fail_exchange(self, exchange_id: str, error: str) -> None:
         responded_at = utc_now()
-        await asyncio.to_thread(
-            self._fail_exchange_sync, exchange_id, error, responded_at
-        )
+        async with self._write_lock:
+            await asyncio.to_thread(
+                self._fail_exchange_sync, exchange_id, error, responded_at
+            )
 
     def _fail_exchange_sync(
         self, exchange_id: str, error: str, responded_at: datetime
@@ -184,7 +194,8 @@ class SQLiteRepository:
             )
 
     async def finish_run(self, run_id: str, status: str) -> None:
-        await asyncio.to_thread(self._finish_run_sync, run_id, status, utc_now())
+        async with self._write_lock:
+            await asyncio.to_thread(self._finish_run_sync, run_id, status, utc_now())
 
     def _finish_run_sync(self, run_id: str, status: str, completed_at: datetime) -> None:
         with self._connect() as connection:

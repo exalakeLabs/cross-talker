@@ -24,8 +24,8 @@ class CrossTalker:
         self._providers: Mapping[str, ModelProvider] = {
             provider.name.lower(): provider for provider in providers
         }
-        if len(self._providers) < 2:
-            raise ConfigurationError("CrossTalker requires at least two providers")
+        if not self._providers:
+            raise ConfigurationError("CrossTalker requires at least one provider")
         self.default_rounds = default_rounds
         self.max_rounds = max_rounds
         self.repository = repository or SQLiteRepository(":memory:")
@@ -45,6 +45,11 @@ class CrossTalker:
         round_count = self.default_rounds if rounds is None else rounds
         if not 0 <= round_count <= self.max_rounds:
             raise ConfigurationError(f"rounds must be between 0 and {self.max_rounds}")
+        if round_count > 0 and len(selected) < 2:
+            raise ConfigurationError(
+                "Cross-check rounds require at least two providers; use rounds=0 "
+                "for a single-provider run"
+            )
 
         run_id, created_at = await self.repository.create_run(prompt, round_count)
         try:
@@ -79,8 +84,8 @@ class CrossTalker:
             if missing:
                 raise ConfigurationError(f"Unknown providers: {', '.join(missing)}")
             selected = [self._providers[name.lower()] for name in names]
-        if len(selected) < 2:
-            raise ConfigurationError("At least two providers are required")
+        if not selected:
+            raise ConfigurationError("At least one provider is required")
         return selected
 
     async def _run_initial(
