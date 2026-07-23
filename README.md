@@ -104,12 +104,19 @@ endpoint using the configured OpenAI account:
 RUN_LIVE_TESTS=1 pytest tests/test_live_service.py -v -s
 ```
 
-The live test randomly selects a question and answer format, sends the resulting prompt, verifies
-the API response, and retrieves the saved exchange through `GET /v1/runs/{run_id}`. It prints the
-prompt and its seed, and uses a temporary SQLite database that pytest removes afterward. To replay
-the same randomly selected prompt:
+Set `NUM_PROMPTS` to run multiple independently generated prompts in the same test invocation:
 
 ```bash
-LIVE_TEST_SEED=<printed-seed> RUN_LIVE_TESTS=1 \
+NUM_PROMPTS=5 RUN_LIVE_TESTS=1 pytest tests/test_live_service.py -v -s
+```
+
+Each prompt creates its own persisted run. `NUM_PROMPTS` defaults to 1 and is limited to 20 to
+guard against accidental provider charges. The live test verifies every API response and retrieves
+each saved exchange through `GET /v1/runs/{run_id}`. It prints every prompt and its shared seed,
+and uses a temporary SQLite database that pytest removes afterward. To replay the same prompt
+sequence:
+
+```bash
+LIVE_TEST_SEED=<printed-seed> NUM_PROMPTS=5 RUN_LIVE_TESTS=1 \
   pytest tests/test_live_service.py -v -s
 ```

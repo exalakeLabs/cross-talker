@@ -13,10 +13,10 @@ from cross_talker.factory import build_cross_talker
 pytestmark = pytest.mark.live
 
 
-def generate_live_prompt() -> tuple[str, str]:
+def generate_live_prompt(iteration: int = 0) -> tuple[str, str]:
     """Return a prompt and seed; set LIVE_TEST_SEED to reproduce a selection."""
-    seed = os.getenv("LIVE_TEST_SEED") or os.urandom(8).hex()
-    generator = random.Random(seed)
+    base_seed = os.getenv("LIVE_TEST_SEED") or os.urandom(8).hex()
+    generator = random.Random(f"{base_seed}:{iteration}")
     questions = [
         "Why do leaves usually appear green?",
         "How does a rainbow form?",
@@ -33,7 +33,18 @@ def generate_live_prompt() -> tuple[str, str]:
         "Answer for a curious twelve-year-old in no more than 50 words.",
         "Give a concise answer followed by one supporting fact.",
     ]
-    return f"{generator.choice(questions)} {generator.choice(formats)}", seed
+    return f"{generator.choice(questions)} {generator.choice(formats)}", base_seed
+
+
+def get_num_prompts() -> int:
+    raw_value = os.getenv("NUM_PROMPTS", "1")
+    try:
+        count = int(raw_value)
+    except ValueError as exc:
+        raise ValueError("NUM_PROMPTS must be an integer") from exc
+    if not 1 <= count <= 20:
+        raise ValueError("NUM_PROMPTS must be between 1 and 20")
+    return count
 
 
 @pytest.mark.skipif(
@@ -41,8 +52,7 @@ def generate_live_prompt() -> tuple[str, str]:
     reason="Set RUN_LIVE_TESTS=1 to make a billable OpenAI API request",
 )
 async def test_live_openai_request_through_http_service(tmp_path) -> None:
-    prompt, seed = generate_live_prompt()
-    print(f"\nLive prompt seed: {seed}\nLive prompt: {prompt}")
+    num_prompts = get_num_prompts()
     settings = Settings(
         providers=["openai"],
         default_rounds=0,
@@ -60,28 +70,39 @@ async def test_live_openai_request_through_http_service(tmp_path) -> None:
             base_url="http://test-service",
             timeout=90,
         ) as client:
-            response = await client.post(
-                "/v1/cross-talk",
-                json={
-                    "prompt": prompt,
-                    "rounds": 0,
-                    "providers": ["openai"],
-                },
-            )
-            assert response.status_code == 200, response.text
-            result = response.json()
-            assert result["prompt"] == prompt
-            assert result["final_answers"][0]["provider"] == "openai"
-            assert result["final_answers"][0]["content"]
+            run_ids: set[str] = set()
+            for iteration in range(num_prompts):
+                prompt, seed = generate_live_prompt(iteration)
+                print(
+                    f"\nLive prompt {iteration + 1}/{num_prompts}"
+                    f"\nSeed: {seed}\nPrompt: {prompt}"
+                )
+                response = await client.post(
+                    "/v1/cross-talk",
+                    json={
+                        "prompt": prompt,
+                        "rounds": 0,
+                        "providers": ["openai"],
+                    },
+                )
+                assert response.status_code == 200, response.text
+                result = response.json()
+                assert result["run_id"] not in run_ids
+                run_ids.add(result["run_id"])
+                assert result["prompt"] == prompt
+                assert result["final_answers"][0]["provider"] == "openai"
+                assert result["final_answers"][0]["content"]
 
-            stored_response = await client.get(f"/v1/runs/{result['run_id']}")
-            assert stored_response.status_code == 200
-            exchange = stored_response.json()["exchanges"][0]
-            assert exchange["status"] == "completed"
-            assert exchange["provider"] == "openai"
-            assert exchange["prompt_sent"] == prompt
-            assert exchange["answer"]
-            assert exchange["requested_at"]
-            assert exchange["responded_at"]
+                stored_response = await client.get(f"/v1/runs/{result['run_id']}")
+                assert stored_response.status_code == 200
+                exchange = stored_response.json()["exchanges"][0]
+                assert exchange["status"] == "completed"
+                assert exchange["provider"] == "openai"
+                assert exchange["prompt_sent"] == prompt
+                assert exchange["answer"]
+                assert exchange["requested_at"]
+                assert exchange["responded_at"]
+
+            assert len(run_ids) == num_prompts
     finally:
         app.dependency_overrides.clear()
