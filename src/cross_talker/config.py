@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
     anthropic_model: str = Field(
-        default="claude-sonnet-4-20250514", validation_alias="ANTHROPIC_MODEL"
+        default="claude-sonnet-4-6", validation_alias="ANTHROPIC_MODEL"
     )
     anthropic_base_url: str = Field(
         default="https://api.anthropic.com/v1", validation_alias="ANTHROPIC_BASE_URL"

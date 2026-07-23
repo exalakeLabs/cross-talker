@@ -49,6 +49,30 @@ GET /v1/runs
 GET /v1/runs/{run_id}
 ```
 
+## Local interaction browser
+
+The React interface in `ui/` presents stored runs as a spreadsheet-style interaction ledger.
+It groups exchanges by iteration level, color-codes providers, and opens the full prompt and answer
+when a row is selected.
+
+Start the Python API:
+
+```bash
+source .venv/bin/activate
+cross-talker
+```
+
+In another terminal, start the UI:
+
+```bash
+cd ui
+pnpm install
+pnpm dev
+```
+
+Open `http://localhost:3000`. The UI reads history from `http://localhost:8000` by default.
+Set `NEXT_PUBLIC_API_URL` before starting the UI if the API uses another address.
+
 ## Example
 
 ```bash
@@ -110,13 +134,30 @@ Set `NUM_PROMPTS` to run multiple independently generated prompts in the same te
 NUM_PROMPTS=5 RUN_LIVE_TESTS=1 pytest tests/test_live_service.py -v -s
 ```
 
-Each prompt creates its own persisted run. `NUM_PROMPTS` defaults to 1 and is limited to 20 to
+Each prompt creates its own persisted run in the configured `data/cross_talker.db`.
+`NUM_PROMPTS` defaults to 1 and is limited to 20 to
 guard against accidental provider charges. The live test verifies every API response and retrieves
 each saved exchange through `GET /v1/runs/{run_id}`. It prints every prompt and its shared seed,
-and uses a temporary SQLite database that pytest removes afterward. To replay the same prompt
-sequence:
+To use a disposable or alternate database, set `LIVE_TEST_DATABASE_PATH`. To replay the same
+prompt sequence:
 
 ```bash
 LIVE_TEST_SEED=<printed-seed> NUM_PROMPTS=5 RUN_LIVE_TESTS=1 \
   pytest tests/test_live_service.py -v -s
 ```
+
+To run a live cross-talk test that pits OpenAI and Claude against each other, set the number of
+peer-review levels with `CROSS_TALK_ROUNDS`:
+
+```bash
+CROSS_TALK_ROUNDS=2 RUN_CROSS_TALK_TESTS=1 \
+  pytest tests/test_live_cross_talk.py -v -s
+```
+
+This produces two independent answers at level 0, then passes each answer to the other model for
+the requested number of review levels. The test confirms that every engineered prompt contains
+only the peer's previous answer and that all prompts, replies, providers, levels, and timestamps
+are persisted to the configured `data/cross_talker.db`. The round count defaults to 2 and is
+limited to 100. Because two providers are called at every level, 100 review levels generate 202
+billable API calls including the two initial responses. Set `LIVE_TEST_DATABASE_PATH` if you
+explicitly want a different database.

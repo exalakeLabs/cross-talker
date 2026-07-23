@@ -4,6 +4,7 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from cross_talker.config import get_settings
 from cross_talker.exceptions import ConfigurationError, ProviderCallError
@@ -20,6 +21,13 @@ app = FastAPI(
     title="Cross Talker",
     version="0.1.0",
     description="Cross-check prompts across multiple model services.",
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
 

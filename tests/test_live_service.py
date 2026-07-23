@@ -51,12 +51,13 @@ def get_num_prompts() -> int:
     os.getenv("RUN_LIVE_TESTS") != "1",
     reason="Set RUN_LIVE_TESTS=1 to make a billable OpenAI API request",
 )
-async def test_live_openai_request_through_http_service(tmp_path) -> None:
+async def test_live_openai_request_through_http_service() -> None:
     num_prompts = get_num_prompts()
+    configured = Settings()
     settings = Settings(
         providers=["openai"],
         default_rounds=0,
-        database_path=str(tmp_path / "live-service.db"),
+        database_path=os.getenv("LIVE_TEST_DATABASE_PATH", configured.database_path),
     )
     assert settings.openai_api_key, "OPENAI_API_KEY must be configured in .env"
 
