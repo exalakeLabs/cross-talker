@@ -32,3 +32,4 @@ def test_seed_reproduces_prompt_sequence(monkeypatch) -> None:
     second_sequence = [generate_live_prompt(index) for index in range(3)]
 
     assert first_sequence == second_sequence
+    assert len({prompt for prompt, _ in first_sequence}) == 3

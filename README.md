@@ -154,8 +154,16 @@ CROSS_TALK_ROUNDS=2 RUN_CROSS_TALK_TESTS=1 \
   pytest tests/test_live_cross_talk.py -v -s
 ```
 
-This produces two independent answers at level 0, then passes each answer to the other model for
-the requested number of review levels. The test confirms that every engineered prompt contains
+Use `NUM_PROMPTS` to create multiple cross-talk runs, each with a different generated prompt:
+
+```bash
+NUM_PROMPTS=10 CROSS_TALK_ROUNDS=5 RUN_CROSS_TALK_TESTS=1 \
+  pytest tests/test_live_cross_talk.py -v -s
+```
+
+`RUN_CROSS_TALK_TESTS` is an enable flag and must be `1`; it is not the run count. This produces
+two independent answers at level 0, then passes each answer to the other model for the requested
+number of review levels. The test confirms that every engineered prompt contains
 only the peer's previous answer and that all prompts, replies, providers, levels, and timestamps
 are persisted to the configured `data/cross_talker.db`. The round count defaults to 2 and is
 limited to 100. Because two providers are called at every level, 100 review levels generate 202

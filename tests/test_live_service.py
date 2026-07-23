@@ -13,10 +13,13 @@ from cross_talker.factory import build_cross_talker
 pytestmark = pytest.mark.live
 
 
-def generate_live_prompt(iteration: int = 0) -> tuple[str, str]:
+def generate_live_prompt(
+    iteration: int = 0,
+    base_seed: str | None = None,
+) -> tuple[str, str]:
     """Return a prompt and seed; set LIVE_TEST_SEED to reproduce a selection."""
-    base_seed = os.getenv("LIVE_TEST_SEED") or os.urandom(8).hex()
-    generator = random.Random(f"{base_seed}:{iteration}")
+    selected_seed = base_seed or os.getenv("LIVE_TEST_SEED") or os.urandom(8).hex()
+    generator = random.Random(selected_seed)
     questions = [
         "Why do leaves usually appear green?",
         "How does a rainbow form?",
@@ -33,7 +36,9 @@ def generate_live_prompt(iteration: int = 0) -> tuple[str, str]:
         "Answer for a curious twelve-year-old in no more than 50 words.",
         "Give a concise answer followed by one supporting fact.",
     ]
-    return f"{generator.choice(questions)} {generator.choice(formats)}", base_seed
+    prompts = [f"{question} {answer_format}" for question in questions for answer_format in formats]
+    generator.shuffle(prompts)
+    return prompts[iteration % len(prompts)], selected_seed
 
 
 def get_num_prompts() -> int:
@@ -53,6 +58,7 @@ def get_num_prompts() -> int:
 )
 async def test_live_openai_request_through_http_service() -> None:
     num_prompts = get_num_prompts()
+    base_seed = os.getenv("LIVE_TEST_SEED") or os.urandom(8).hex()
     configured = Settings()
     settings = Settings(
         providers=["openai"],
@@ -73,7 +79,7 @@ async def test_live_openai_request_through_http_service() -> None:
         ) as client:
             run_ids: set[str] = set()
             for iteration in range(num_prompts):
-                prompt, seed = generate_live_prompt(iteration)
+                prompt, seed = generate_live_prompt(iteration, base_seed)
                 print(
                     f"\nLive prompt {iteration + 1}/{num_prompts}"
                     f"\nSeed: {seed}\nPrompt: {prompt}"

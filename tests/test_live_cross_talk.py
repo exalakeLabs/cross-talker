@@ -8,7 +8,7 @@ import pytest
 from cross_talker.api import app, get_cross_talker
 from cross_talker.config import Settings
 from cross_talker.factory import build_cross_talker
-from tests.test_live_service import generate_live_prompt
+from tests.test_live_service import generate_live_prompt, get_num_prompts
 
 pytestmark = pytest.mark.live
 
@@ -30,11 +30,9 @@ def get_cross_talk_rounds() -> int:
 )
 async def test_live_models_cross_check_each_other() -> None:
     rounds = get_cross_talk_rounds()
-    prompt, seed = generate_live_prompt()
-    print(
-        f"\nCross-talk seed: {seed}\nCross-talk rounds: {rounds}"
-        f"\nOriginal prompt: {prompt}"
-    )
+    num_prompts = get_num_prompts()
+    base_seed = os.getenv("LIVE_TEST_SEED") or os.urandom(8).hex()
+    print(f"\nCross-talk seed: {base_seed}\nCross-talk rounds: {rounds}")
 
     configured = Settings()
     settings = Settings(
@@ -56,67 +54,81 @@ async def test_live_models_cross_check_each_other() -> None:
             base_url="http://test-service",
             timeout=120,
         ) as client:
-            response = await client.post(
-                "/v1/cross-talk",
-                json={
-                    "prompt": prompt,
-                    "rounds": rounds,
-                    "providers": ["openai", "anthropic"],
-                },
-            )
-            assert response.status_code == 200, response.text
-            result = response.json()
+            run_ids: set[str] = set()
+            for iteration in range(num_prompts):
+                prompt, _ = generate_live_prompt(iteration, base_seed)
+                print(
+                    f"\nCross-talk run {iteration + 1}/{num_prompts}"
+                    f"\nOriginal prompt: {prompt}"
+                )
+                response = await client.post(
+                    "/v1/cross-talk",
+                    json={
+                        "prompt": prompt,
+                        "rounds": rounds,
+                        "providers": ["openai", "anthropic"],
+                    },
+                )
+                assert response.status_code == 200, response.text
+                result = response.json()
+                assert result["run_id"] not in run_ids
+                run_ids.add(result["run_id"])
 
-            assert result["rounds_completed"] == rounds
-            assert len(result["history"]) == rounds + 1
-            for level in result["history"]:
-                assert {answer["provider"] for answer in level["answers"]} == {
-                    "openai",
-                    "anthropic",
-                }
-                assert all(answer["round"] == level["round"] for answer in level["answers"])
-                assert all(answer["content"] for answer in level["answers"])
+                assert result["rounds_completed"] == rounds
+                assert len(result["history"]) == rounds + 1
+                for level in result["history"]:
+                    assert {answer["provider"] for answer in level["answers"]} == {
+                        "openai",
+                        "anthropic",
+                    }
+                    assert all(
+                        answer["round"] == level["round"] for answer in level["answers"]
+                    )
+                    assert all(answer["content"] for answer in level["answers"])
 
-            # At each review level, every model must receive the other model's
-            # immediately preceding answer, never its own.
-            for level_number in range(1, rounds + 1):
-                previous = {
-                    answer["provider"]: answer["content"]
-                    for answer in result["history"][level_number - 1]["answers"]
-                }
-                current = {
-                    answer["provider"]: answer
-                    for answer in result["history"][level_number]["answers"]
-                }
-                assert previous["anthropic"] in current["openai"]["prompt_sent"]
-                assert previous["openai"] not in current["openai"]["prompt_sent"]
-                assert previous["openai"] in current["anthropic"]["prompt_sent"]
-                assert previous["anthropic"] not in current["anthropic"]["prompt_sent"]
+                # Every reviewer receives only the peer's immediately preceding answer.
+                for level_number in range(1, rounds + 1):
+                    previous = {
+                        answer["provider"]: answer["content"]
+                        for answer in result["history"][level_number - 1]["answers"]
+                    }
+                    current = {
+                        answer["provider"]: answer
+                        for answer in result["history"][level_number]["answers"]
+                    }
+                    assert previous["anthropic"] in current["openai"]["prompt_sent"]
+                    assert previous["openai"] not in current["openai"]["prompt_sent"]
+                    assert previous["openai"] in current["anthropic"]["prompt_sent"]
+                    assert previous["anthropic"] not in current["anthropic"]["prompt_sent"]
 
-            stored_response = await client.get(f"/v1/runs/{result['run_id']}")
-            assert stored_response.status_code == 200
-            stored = stored_response.json()
-            assert stored["status"] == "completed"
-            assert stored["rounds_requested"] == rounds
-            assert len(stored["exchanges"]) == 2 * (rounds + 1)
+                stored_response = await client.get(f"/v1/runs/{result['run_id']}")
+                assert stored_response.status_code == 200
+                stored = stored_response.json()
+                assert stored["status"] == "completed"
+                assert stored["rounds_requested"] == rounds
+                assert len(stored["exchanges"]) == 2 * (rounds + 1)
 
-            for level_number in range(rounds + 1):
-                saved_level = [
-                    exchange
-                    for exchange in stored["exchanges"]
-                    if exchange["round"] == level_number
-                ]
-                assert {exchange["provider"] for exchange in saved_level} == {
-                    "openai",
-                    "anthropic",
-                }
-                assert all(exchange["status"] == "completed" for exchange in saved_level)
-                assert all(exchange["prompt_sent"] for exchange in saved_level)
-                assert all(exchange["answer"] for exchange in saved_level)
-                assert all(exchange["requested_at"] for exchange in saved_level)
-                assert all(exchange["responded_at"] for exchange in saved_level)
+                for level_number in range(rounds + 1):
+                    saved_level = [
+                        exchange
+                        for exchange in stored["exchanges"]
+                        if exchange["round"] == level_number
+                    ]
+                    assert {exchange["provider"] for exchange in saved_level} == {
+                        "openai",
+                        "anthropic",
+                    }
+                    assert all(
+                        exchange["status"] == "completed" for exchange in saved_level
+                    )
+                    assert all(exchange["prompt_sent"] for exchange in saved_level)
+                    assert all(exchange["answer"] for exchange in saved_level)
+                    assert all(exchange["requested_at"] for exchange in saved_level)
+                    assert all(exchange["responded_at"] for exchange in saved_level)
 
-            print(f"\nPersisted run ID: {result['run_id']}")
+                print(f"Persisted run ID: {result['run_id']}")
+
+            assert len(run_ids) == num_prompts
             print(f"SQLite database: {settings.database_path}")
     finally:
         app.dependency_overrides.clear()
