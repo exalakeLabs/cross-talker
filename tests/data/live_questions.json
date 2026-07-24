@@ -1,0 +1,184 @@
+{
+  "questions": [
+    {
+      "category": "science",
+      "text": "Why do leaves usually appear green?"
+    },
+    {
+      "category": "science",
+      "text": "How does a rainbow form?"
+    },
+    {
+      "category": "science",
+      "text": "What causes ocean tides?"
+    },
+    {
+      "category": "science",
+      "text": "Why does metal feel colder than wood at the same room temperature?"
+    },
+    {
+      "category": "science",
+      "text": "Why are there seasons on Earth?"
+    },
+    {
+      "category": "biology",
+      "text": "How do bees communicate the location of food?"
+    },
+    {
+      "category": "biology",
+      "text": "Why does the human body need sleep?"
+    },
+    {
+      "category": "biology",
+      "text": "How does vaccination help the immune system recognize a disease?"
+    },
+    {
+      "category": "technology",
+      "text": "What is the practical difference between encryption and hashing?"
+    },
+    {
+      "category": "technology",
+      "text": "Why can adding an index make a database query faster but writes slower?"
+    },
+    {
+      "category": "technology",
+      "text": "Explain one important tradeoff between a monolith and microservices."
+    },
+    {
+      "category": "technology",
+      "text": "Why is idempotency useful when designing a web API?"
+    },
+    {
+      "category": "mathematics",
+      "text": "A shop discounts an $80 item by 25% and then adds 10% sales tax. What is the final price?"
+    },
+    {
+      "category": "mathematics",
+      "text": "Why does multiplying two negative numbers produce a positive number?"
+    },
+    {
+      "category": "mathematics",
+      "text": "What is the probability of rolling at least one six in two rolls of a fair die?"
+    },
+    {
+      "category": "logic",
+      "text": "All tulips are flowers, and some flowers fade quickly. Can we conclude that some tulips fade quickly? Explain."
+    },
+    {
+      "category": "logic",
+      "text": "A claim is popular and repeated often. Does that make it more likely to be true? Explain the reasoning error."
+    },
+    {
+      "category": "history",
+      "text": "What were two major factors that contributed to the fall of the Western Roman Empire?"
+    },
+    {
+      "category": "history",
+      "text": "How did the printing press change the spread of knowledge in Europe?"
+    },
+    {
+      "category": "history",
+      "text": "Why was the development of agriculture a turning point for human societies?"
+    },
+    {
+      "category": "economics",
+      "text": "Why can rapidly increasing the money supply contribute to inflation?"
+    },
+    {
+      "category": "economics",
+      "text": "What is the difference between a recession and a depression?"
+    },
+    {
+      "category": "economics",
+      "text": "Give one benefit and one risk of raising interest rates to control inflation."
+    },
+    {
+      "category": "civics",
+      "text": "Why do many governments separate legislative, executive, and judicial powers?"
+    },
+    {
+      "category": "civics",
+      "text": "What is one strength and one weakness of deciding policy by referendum?"
+    },
+    {
+      "category": "ethics",
+      "text": "Should an autonomous vehicle prioritize its passengers or minimize total harm in an unavoidable crash? Present both sides."
+    },
+    {
+      "category": "ethics",
+      "text": "When, if ever, is it ethical for a company to collect user data without explicit consent?"
+    },
+    {
+      "category": "ethics",
+      "text": "Is a fair outcome always the same as an equal outcome? Give a concrete example."
+    },
+    {
+      "category": "planning",
+      "text": "Design a simple three-step plan for reducing food waste in a small restaurant."
+    },
+    {
+      "category": "planning",
+      "text": "A team has one week to investigate a recurring production outage. How should it prioritize the work?"
+    },
+    {
+      "category": "planning",
+      "text": "What should a family consider when choosing between renting and buying a home?"
+    },
+    {
+      "category": "communication",
+      "text": "Rewrite the idea 'we cannot meet the deadline' as a constructive message to a client."
+    },
+    {
+      "category": "communication",
+      "text": "How can someone disagree with a colleague clearly without making the conversation hostile?"
+    },
+    {
+      "category": "creative",
+      "text": "Invent a plausible use for a library card in a city where books no longer exist."
+    },
+    {
+      "category": "creative",
+      "text": "Describe a household object from the perspective of an archaeologist five hundred years in the future."
+    },
+    {
+      "category": "creative",
+      "text": "Propose an unusual but practical feature for a neighborhood park."
+    },
+    {
+      "category": "critical-thinking",
+      "text": "A study finds that people who carry lighters have higher rates of lung disease. Why does this not prove that lighters cause disease?"
+    },
+    {
+      "category": "critical-thinking",
+      "text": "What evidence would help evaluate the claim that remote work always increases productivity?"
+    },
+    {
+      "category": "critical-thinking",
+      "text": "A forecast was correct once. What else should we examine before trusting the forecasting method?"
+    },
+    {
+      "category": "everyday",
+      "text": "Why does bread become stale, and what is the best way to slow the process?"
+    },
+    {
+      "category": "everyday",
+      "text": "Why is it usually more efficient to heat the person rather than an entire room?"
+    },
+    {
+      "category": "everyday",
+      "text": "What factors should determine whether a damaged appliance is repaired or replaced?"
+    }
+  ],
+  "response_styles": [
+    "Answer in one short sentence.",
+    "Answer in exactly two concise sentences.",
+    "Explain your reasoning in no more than 80 words.",
+    "Give a direct answer followed by one supporting fact.",
+    "State your conclusion, one assumption, and one possible objection.",
+    "Use a short numbered list and make any uncertainty explicit.",
+    "Give the strongest argument on both sides, then state your conclusion.",
+    "Answer for an intelligent reader who is new to the topic.",
+    "Check the premise of the question before answering.",
+    "Provide a concise answer and one example."
+  ]
+}

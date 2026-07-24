@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import random
 
 import httpx
 import pytest
@@ -9,48 +8,9 @@ import pytest
 from cross_talker.api import app, get_cross_talker
 from cross_talker.config import Settings
 from cross_talker.factory import build_cross_talker
+from tests.live_prompt_bank import generate_live_prompt, get_num_prompts
 
 pytestmark = pytest.mark.live
-
-
-def generate_live_prompt(
-    iteration: int = 0,
-    base_seed: str | None = None,
-) -> tuple[str, str]:
-    """Return a prompt and seed; set LIVE_TEST_SEED to reproduce a selection."""
-    selected_seed = base_seed or os.getenv("LIVE_TEST_SEED") or os.urandom(8).hex()
-    generator = random.Random(selected_seed)
-    questions = [
-        "Why do leaves usually appear green?",
-        "How does a rainbow form?",
-        "What causes ocean tides?",
-        "Why does metal feel colder than wood at the same room temperature?",
-        "How do bees communicate the location of food?",
-        "What is the difference between weather and climate?",
-        "Why are there seasons on Earth?",
-        "How does a compass identify north?",
-    ]
-    formats = [
-        "Answer in one short sentence.",
-        "Answer in exactly two concise sentences.",
-        "Answer for a curious twelve-year-old in no more than 50 words.",
-        "Give a concise answer followed by one supporting fact.",
-    ]
-    prompts = [f"{question} {answer_format}" for question in questions for answer_format in formats]
-    generator.shuffle(prompts)
-    return prompts[iteration % len(prompts)], selected_seed
-
-
-def get_num_prompts() -> int:
-    raw_value = os.getenv("NUM_PROMPTS", "1")
-    try:
-        count = int(raw_value)
-    except ValueError as exc:
-        raise ValueError("NUM_PROMPTS must be an integer") from exc
-    if not 1 <= count <= 20:
-        raise ValueError("NUM_PROMPTS must be between 1 and 20")
-    return count
-
 
 @pytest.mark.skipif(
     os.getenv("RUN_LIVE_TESTS") != "1",

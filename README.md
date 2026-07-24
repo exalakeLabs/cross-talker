@@ -135,7 +135,9 @@ NUM_PROMPTS=5 RUN_LIVE_TESTS=1 pytest tests/test_live_service.py -v -s
 ```
 
 Each prompt creates its own persisted run in the configured `data/cross_talker.db`.
-`NUM_PROMPTS` defaults to 1 and is limited to 20 to
+Prompts are selected from `tests/data/live_questions.json`, which spans factual, quantitative,
+analytical, practical, ethical, and creative topics with varied response styles. `NUM_PROMPTS`
+defaults to 1 and is limited to the 42 questions in the bank to
 guard against accidental provider charges. The live test verifies every API response and retrieves
 each saved exchange through `GET /v1/runs/{run_id}`. It prints every prompt and its shared seed,
 To use a disposable or alternate database, set `LIVE_TEST_DATABASE_PATH`. To replay the same

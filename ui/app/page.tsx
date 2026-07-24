@@ -25,6 +25,11 @@ type Run = {
   exchanges: Exchange[];
 };
 
+type Health = {
+  status: string;
+  configured_providers: string[];
+};
+
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 function formatDate(value: string) {
@@ -54,6 +59,19 @@ export default function Home() {
   const [provider, setProvider] = useState("all");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [newPrompt, setNewPrompt] = useState("");
+  const [availableProviders, setAvailableProviders] = useState<string[]>([
+    "openai",
+    "anthropic",
+  ]);
+  const [selectedProviders, setSelectedProviders] = useState<string[]>([
+    "openai",
+    "anthropic",
+  ]);
+  const [rounds, setRounds] = useState(2);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const fetchRun = useCallback(async (id: string) => {
     const response = await fetch(`${API}/v1/runs/${id}`, { cache: "no-store" });
@@ -63,9 +81,8 @@ export default function Home() {
     setDetail((selected) =>
       selected
         ? run.exchanges.find((item) => item.exchange_id === selected.exchange_id) ??
-          run.exchanges[0] ??
           null
-        : run.exchanges[0] ?? null,
+        : null,
     );
   }, []);
 
@@ -95,6 +112,72 @@ export default function Home() {
     const timer = window.setInterval(() => void refresh(true), 4000);
     return () => window.clearInterval(timer);
   }, [refresh]);
+
+  useEffect(() => {
+    void fetch(`${API}/health`, { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const health: Health = await response.json();
+        if (health.configured_providers.length) {
+          setAvailableProviders(health.configured_providers);
+          setSelectedProviders(health.configured_providers);
+          if (health.configured_providers.length === 1) setRounds(0);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!composerOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !submitting) setComposerOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [composerOpen, submitting]);
+
+  function toggleProvider(name: string) {
+    setSelectedProviders((selected) => {
+      const next = selected.includes(name)
+        ? selected.filter((providerName) => providerName !== name)
+        : [...selected, name];
+      if (next.length < 2) setRounds(0);
+      return next;
+    });
+  }
+
+  async function submitPrompt(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!newPrompt.trim() || selectedProviders.length === 0) return;
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const response = await fetch(`${API}/v1/cross-talk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: newPrompt.trim(),
+          providers: selectedProviders,
+          rounds: selectedProviders.length > 1 ? rounds : 0,
+        }),
+      });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+        throw new Error(failure?.detail ?? "The cross-talk run failed.");
+      }
+      const result = await response.json();
+      setNewPrompt("");
+      setComposerOpen(false);
+      await refresh(true);
+      await fetchRun(result.run_id);
+    } catch (caught) {
+      setSubmitError(
+        caught instanceof Error ? caught.message : "The cross-talk run failed.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   const filteredRuns = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -134,6 +217,15 @@ export default function Home() {
             <i /> {error ? "Backend offline" : "Auto-syncing"}
           </span>
           <button onClick={() => void refresh()}>Refresh</button>
+          <button
+            className="new-run-button"
+            onClick={() => {
+              setSubmitError("");
+              setComposerOpen(true);
+            }}
+          >
+            + New cross-talk
+          </button>
         </div>
       </header>
 
@@ -299,6 +391,141 @@ export default function Home() {
             <pre>{detail.answer ?? detail.error ?? "Pending"}</pre>
           </article>
         </aside>
+      )}
+
+      {composerOpen && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !submitting) {
+              setComposerOpen(false);
+            }
+          }}
+        >
+          <section
+            aria-labelledby="new-cross-talk-title"
+            aria-modal="true"
+            className="composer"
+            role="dialog"
+          >
+            <header>
+              <div>
+                <small>New conversation</small>
+                <h2 id="new-cross-talk-title">Start a cross-talk run</h2>
+              </div>
+              <button
+                aria-label="Close new prompt"
+                disabled={submitting}
+                onClick={() => setComposerOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <form onSubmit={submitPrompt}>
+              <label className="prompt-field">
+                <span>Prompt</span>
+                <textarea
+                  autoFocus
+                  disabled={submitting}
+                  maxLength={100000}
+                  placeholder="What should the models investigate, debate, or verify?"
+                  required
+                  rows={6}
+                  value={newPrompt}
+                  onChange={(event) => setNewPrompt(event.target.value)}
+                />
+                <small>{newPrompt.length.toLocaleString()} / 100,000</small>
+              </label>
+
+              <fieldset>
+                <legend>Models</legend>
+                <div className="model-options">
+                  {availableProviders.map((name) => (
+                    <label
+                      className={`model-option ${name} ${
+                        selectedProviders.includes(name) ? "checked" : ""
+                      }`}
+                      key={name}
+                    >
+                      <input
+                        checked={selectedProviders.includes(name)}
+                        disabled={submitting}
+                        onChange={() => toggleProvider(name)}
+                        type="checkbox"
+                      />
+                      <span className="model-icon">
+                        {name === "anthropic" ? "C" : "O"}
+                      </span>
+                      <span>
+                        <b>{providerName(name)}</b>
+                        <small>
+                          {name === "anthropic"
+                            ? "Claude Sonnet"
+                            : "GPT model"}
+                        </small>
+                      </span>
+                      <i>✓</i>
+                    </label>
+                  ))}
+                </div>
+                {selectedProviders.length === 0 && (
+                  <p className="field-error">Select at least one model.</p>
+                )}
+              </fieldset>
+
+              <label className="round-field">
+                <span>
+                  Review levels
+                  <small>
+                    {selectedProviders.length < 2
+                      ? "A second model is required for cross-checking."
+                      : "Each model reviews the other model at every level."}
+                  </small>
+                </span>
+                <input
+                  disabled={submitting || selectedProviders.length < 2}
+                  max={5}
+                  min={0}
+                  onChange={(event) => setRounds(Number(event.target.value))}
+                  type="number"
+                  value={selectedProviders.length < 2 ? 0 : rounds}
+                />
+              </label>
+
+              {submitError && <p className="submit-error">{submitError}</p>}
+
+              <footer>
+                <p>
+                  {selectedProviders.length || 0} model
+                  {selectedProviders.length === 1 ? "" : "s"} ·{" "}
+                  {selectedProviders.length > 1 ? rounds + 1 : 1} total level
+                  {selectedProviders.length > 1 && rounds !== 0 ? "s" : ""}
+                </p>
+                <div>
+                  <button
+                    disabled={submitting}
+                    onClick={() => setComposerOpen(false)}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="submit-run"
+                    disabled={
+                      submitting ||
+                      !newPrompt.trim() ||
+                      selectedProviders.length === 0
+                    }
+                    type="submit"
+                  >
+                    {submitting ? "Models are responding…" : "Start cross-talk"}
+                  </button>
+                </div>
+              </footer>
+            </form>
+          </section>
+        </div>
       )}
     </main>
   );

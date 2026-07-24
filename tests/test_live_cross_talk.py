@@ -8,7 +8,7 @@ import pytest
 from cross_talker.api import app, get_cross_talker
 from cross_talker.config import Settings
 from cross_talker.factory import build_cross_talker
-from tests.test_live_service import generate_live_prompt, get_num_prompts
+from tests.live_prompt_bank import generate_live_prompt, get_num_prompts
 
 pytestmark = pytest.mark.live
 
