@@ -9,6 +9,8 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+!/ui/build/
+!/ui/build/sites-vite-plugin.ts
 develop-eggs/
 dist/
 downloads/
@@ -180,3 +182,5 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 /data
+.DS_Store
+.DS_Store

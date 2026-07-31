@@ -28,16 +28,20 @@ class AnthropicProvider:
         if system_prompt:
             payload["system"] = system_prompt
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            response = await client.post(
-                f"{self._base_url}/messages",
-                headers={
-                    "x-api-key": self._api_key,
-                    "anthropic-version": "2023-06-01",
-                },
-                json=payload,
-            )
-            response.raise_for_status()
-            blocks = response.json()["content"]
-            return "\n".join(block["text"] for block in blocks if block["type"] == "text")
-
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.post(
+                    f"{self._base_url}/messages",
+                    headers={
+                        "x-api-key": self._api_key,
+                        "anthropic-version": "2023-06-01",
+                    },
+                    json=payload,
+                )
+                response.raise_for_status()
+                blocks = response.json()["content"]
+                return "\n".join(block["text"] for block in blocks if block["type"] == "text")
+        except httpx.TimeoutException as exc:
+            raise TimeoutError(
+                f"Anthropic request timed out after {self._timeout:g} seconds"
+            ) from exc
