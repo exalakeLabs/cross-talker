@@ -5,7 +5,11 @@ from collections.abc import Awaitable, Iterable, Mapping
 
 from cross_talker.exceptions import ConfigurationError, ProviderCallError
 from cross_talker.models import CrossTalkResponse, ProviderAnswer, RoundResult
-from cross_talker.prompts import SYSTEM_PROMPT, build_review_prompt
+from cross_talker.prompts import (
+    SYSTEM_PROMPT,
+    build_conclusion_prompt,
+    build_review_prompt,
+)
 from cross_talker.providers.base import ModelProvider
 from cross_talker.storage import SQLiteRepository
 
@@ -62,6 +66,14 @@ class CrossTalker:
                     run_id, prompt, selected, latest, round_number
                 )
                 history.append(RoundResult(round=round_number, answers=latest))
+
+            conclusion = await self._call(
+                run_id,
+                selected[0],
+                build_conclusion_prompt(prompt, latest),
+                round_number=round_count + 1,
+                kind="conclusion",
+            )
         except Exception:
             await self.repository.finish_run(run_id, "failed")
             raise
@@ -74,6 +86,7 @@ class CrossTalker:
             rounds_completed=round_count,
             history=history,
             final_answers=latest,
+            conclusion=conclusion,
         )
 
     def _select(self, names: list[str] | None) -> list[ModelProvider]:
@@ -122,9 +135,15 @@ class CrossTalker:
         prompt: str,
         *,
         round_number: int,
+        kind: str = "response",
     ) -> ProviderAnswer:
         exchange_id, requested_at = await self.repository.begin_exchange(
-            run_id, provider.name, provider.model, round_number, prompt
+            run_id,
+            provider.name,
+            provider.model,
+            round_number,
+            prompt,
+            kind=kind,
         )
         try:
             content = await provider.complete(prompt, system_prompt=SYSTEM_PROMPT)

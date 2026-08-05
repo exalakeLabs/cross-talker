@@ -7,7 +7,11 @@ from cross_talker.providers import AnthropicProvider, ModelProvider, OpenAIProvi
 from cross_talker.storage import SQLiteRepository
 
 
-def build_cross_talker(settings: Settings) -> CrossTalker:
+def build_cross_talker(
+    settings: Settings,
+    *,
+    repository: SQLiteRepository | None = None,
+) -> CrossTalker:
     providers: list[ModelProvider] = []
     for name in settings.providers:
         if name == "openai":
@@ -41,5 +45,5 @@ def build_cross_talker(settings: Settings) -> CrossTalker:
         providers,
         default_rounds=settings.default_rounds,
         max_rounds=settings.max_rounds,
-        repository=SQLiteRepository(settings.database_path),
+        repository=repository or SQLiteRepository(settings.database_path),
     )

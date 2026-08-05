@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 
-from cross_talker.api import app, get_cross_talker
+from cross_talker.api import app, get_cross_talker, get_repository
 from cross_talker.orchestrator import CrossTalker
 from cross_talker.storage import SQLiteRepository
 
@@ -26,6 +26,7 @@ async def api_client(tmp_path) -> AsyncIterator[httpx.AsyncClient]:
         repository=SQLiteRepository(tmp_path / "service-test.db"),
     )
     app.dependency_overrides[get_cross_talker] = lambda: service
+    app.dependency_overrides[get_repository] = lambda: service.repository
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport,
@@ -57,6 +58,8 @@ async def test_http_request_is_persisted_and_retrievable(
     assert result["final_answers"][0]["model"] == "test-model"
     assert result["final_answers"][0]["round"] == 0
     assert result["final_answers"][0]["content"]
+    assert result["conclusion"]["content"]
+    assert result["conclusion"]["provider"] == "test-provider"
 
     stored_response = await api_client.get(f"/v1/runs/{result['run_id']}")
 
@@ -64,7 +67,7 @@ async def test_http_request_is_persisted_and_retrievable(
     stored = stored_response.json()
     assert stored["status"] == "completed"
     assert stored["original_prompt"] == prompt
-    assert len(stored["exchanges"]) == 1
+    assert len(stored["exchanges"]) == 2
 
     exchange = stored["exchanges"][0]
     assert exchange["provider"] == "test-provider"
@@ -74,6 +77,8 @@ async def test_http_request_is_persisted_and_retrievable(
     assert exchange["answer"]
     assert exchange["requested_at"]
     assert exchange["responded_at"]
+    assert exchange["kind"] == "response"
+    assert stored["exchanges"][-1]["kind"] == "conclusion"
 
     list_response = await api_client.get("/v1/runs", params={"limit": 10})
 

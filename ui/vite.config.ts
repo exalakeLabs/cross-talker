@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
@@ -42,11 +43,23 @@ export default defineConfig(async () => {
 
   // Wrangler snapshots its log path while the Cloudflare plugin is imported.
   const { cloudflare } = await import("@cloudflare/vite-plugin");
+  const tlsCertificate = process.env.CROSS_TALKER_TLS_CERT;
+  const tlsKey = process.env.CROSS_TALKER_TLS_KEY;
 
   return {
-    server: isCodexSeatbeltSandbox
-      ? { watch: { useFsEvents: false, usePolling: true } }
-      : undefined,
+    server: {
+      host: "0.0.0.0",
+      https:
+        tlsCertificate && tlsKey
+          ? {
+              cert: readFileSync(tlsCertificate),
+              key: readFileSync(tlsKey),
+            }
+          : undefined,
+      watch: isCodexSeatbeltSandbox
+        ? { useFsEvents: false, usePolling: true }
+        : undefined,
+    },
     plugins: [
       vinext(),
       sites(),

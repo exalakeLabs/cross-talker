@@ -26,3 +26,29 @@ disagreement, then give your best standalone answer to the original question.
 
 {rendered}"""
 
+
+def build_conclusion_prompt(
+    original_prompt: str,
+    final_answers: list[ProviderAnswer],
+) -> str:
+    rendered = "\n\n".join(
+        f"--- Final answer from {answer.provider} ({answer.model}) ---\n{answer.content}"
+        for answer in final_answers
+    )
+    return f"""Original question:
+{original_prompt}
+
+The participating models have completed their cross-checking. Synthesize their final answers
+below into one evidence-aware conclusion for the user.
+
+Your conclusion must:
+- answer the original question directly and stand on its own;
+- preserve the strongest supported insights from the responses;
+- distinguish genuine consensus from unresolved disagreement;
+- call out important uncertainty, assumptions, or missing evidence;
+- never claim agreement when the responses conflict.
+
+Do not describe this task or merely summarize each model in sequence. Produce the clearest
+combined conclusion warranted by the responses.
+
+{rendered}"""
