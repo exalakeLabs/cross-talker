@@ -25,12 +25,16 @@ class OpenAIProvider:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            response = await client.post(
-                f"{self._base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                json={"model": self.model, "messages": messages},
-            )
-            response.raise_for_status()
-            return response.json()["choices"][0]["message"]["content"]
-
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.post(
+                    f"{self._base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    json={"model": self.model, "messages": messages},
+                )
+                response.raise_for_status()
+                return response.json()["choices"][0]["message"]["content"]
+        except httpx.TimeoutException as exc:
+            raise TimeoutError(
+                f"OpenAI request timed out after {self._timeout:g} seconds"
+            ) from exc

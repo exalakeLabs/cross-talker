@@ -40,6 +40,24 @@ async def test_distributes_and_cross_checks_answers() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cross_check_prompt_names_source_and_reviewer_models() -> None:
+    gpt = FakeProvider("openai")
+    claude = FakeProvider("anthropic")
+    service = CrossTalker([gpt, claude], default_rounds=1)
+
+    await service.ask("What is the capital of France?")
+
+    assert claude.prompts[1].startswith(
+        "This is what GPT generated. YOU are Claude, please evaluate this answer "
+        "and re-align your next one based on this analysis."
+    )
+    assert gpt.prompts[1].startswith(
+        "This is what Claude generated. YOU are GPT, please evaluate this answer "
+        "and re-align your next one based on this analysis."
+    )
+
+
+@pytest.mark.asyncio
 async def test_zero_rounds_returns_initial_answers() -> None:
     service = CrossTalker([FakeProvider("alpha"), FakeProvider("beta")])
 

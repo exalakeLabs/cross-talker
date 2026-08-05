@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
+import cross_talker.storage
 from cross_talker.storage import SQLiteRepository
 
 
@@ -79,3 +80,25 @@ async def test_migrates_existing_exchange_table_for_conclusions(tmp_path) -> Non
     assert stored is not None
     assert stored.exchanges[0].kind == "conclusion"
     assert stored.exchanges[0].answer == "Combined conclusion"
+
+
+async def test_reads_do_not_reapply_wal_mode(tmp_path, monkeypatch) -> None:
+    repository = SQLiteRepository(tmp_path / "audit.db")
+    run_id, _ = await repository.create_run("Original question", 1)
+    journal_mode_calls: list[str] = []
+    original_connect = sqlite3.connect
+
+    class TrackingConnection(sqlite3.Connection):
+        def execute(self, sql, parameters=(), /):
+            if sql.strip().upper() == "PRAGMA JOURNAL_MODE = WAL":
+                journal_mode_calls.append(sql)
+            return super().execute(sql, parameters)
+
+    def tracking_connect(*args, **kwargs):
+        return original_connect(*args, **kwargs, factory=TrackingConnection)
+
+    monkeypatch.setattr(cross_talker.storage.sqlite3, "connect", tracking_connect)
+
+    assert await repository.get_run(run_id) is not None
+    assert await repository.list_runs()
+    assert journal_mode_calls == []

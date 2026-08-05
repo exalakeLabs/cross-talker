@@ -46,11 +46,14 @@ class SQLiteRepository:
         )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA busy_timeout = 30000")
         return connection
 
     def _initialize(self) -> None:
         with self._connect() as connection:
+            # Journal mode is persistent database state. Setting it for every
+            # connection can contend with active readers and writers.
+            connection.execute("PRAGMA journal_mode = WAL")
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS runs (
