@@ -47,8 +47,13 @@ test("keeps conclusion synthesis visible and auditable", async () => {
   assert.match(page, /Synthesized conclusion/);
   assert.match(page, /What the models concluded/);
   assert.match(page, /Inspect synthesis inputs/);
+  assert.match(page, /Export training record \(\.jsonl\)/);
+  assert.match(page, /cross-talker\.training\.v1/);
+  assert.match(page, /application\/x-ndjson/);
+  assert.match(page, /final_responses: finalResponses/);
   assert.match(page, /Responses provided to the engine/);
   assert.match(page, /item\.kind !== "conclusion"/);
   assert.match(css, /\.conclusion-panel/);
   assert.match(css, /\.conclusion-heading/);
+  assert.match(css, /\.export-conclusion/);
 });

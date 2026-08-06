@@ -57,7 +57,11 @@ GET /v1/runs/{run_id}
 The React interface in `ui/` presents stored runs as a spreadsheet-style interaction ledger. A
 conclusion panel summarizes each completed interaction, while the evidence table retains every
 provider response by review level. Selecting **Inspect synthesis inputs** reveals the exact final
-responses supplied to the synthesis engine.
+responses supplied to the synthesis engine. Selecting **Export training record (.jsonl)** downloads
+a portable record containing a conventional user/assistant message pair plus Cross Talker
+provenance: the run identifier, final provider responses, synthesis input, provider/model names,
+review depth, and timestamps. The export stays in the browser; the API does not write arbitrary
+paths on the host machine.
 
 Start the Python API:
 

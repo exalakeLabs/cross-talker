@@ -60,6 +60,59 @@ function providerName(value: string) {
   return value === "anthropic" ? "Claude" : value === "openai" ? "OpenAI" : value;
 }
 
+function downloadConclusionRecord(run: Run, conclusion: Exchange) {
+  if (!conclusion.answer) return;
+  const responseRounds = run.exchanges
+    .filter((exchange) => exchange.kind !== "conclusion")
+    .map((exchange) => exchange.round);
+  const finalRound = responseRounds.length ? Math.max(...responseRounds) : 0;
+  const finalResponses = run.exchanges
+    .filter(
+      (exchange) =>
+        exchange.kind !== "conclusion" && exchange.round === finalRound,
+    )
+    .map((exchange) => ({
+      exchange_id: exchange.exchange_id,
+      provider: exchange.provider,
+      model: exchange.model,
+      content: exchange.answer,
+      status: exchange.status,
+      responded_at: exchange.responded_at,
+    }));
+  const record = {
+    schema_version: "cross-talker.training.v1",
+    messages: [
+      { role: "user", content: run.original_prompt },
+      { role: "assistant", content: conclusion.answer },
+    ],
+    cross_talker: {
+      run_id: run.run_id,
+      run_created_at: run.created_at,
+      rounds_requested: run.rounds_requested,
+      final_round: finalRound,
+      final_responses: finalResponses,
+      synthesis: {
+        exchange_id: conclusion.exchange_id,
+        provider: conclusion.provider,
+        model: conclusion.model,
+        input: conclusion.prompt_sent,
+        responded_at: conclusion.responded_at,
+      },
+    },
+  };
+  const blob = new Blob([`${JSON.stringify(record)}\n`], {
+    type: "application/x-ndjson;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `cross-talker-${run.run_id}.jsonl`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function Home() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [current, setCurrent] = useState<Run | null>(null);
@@ -346,13 +399,30 @@ export default function Home() {
                   )}
                 </div>
                 <p>
-                  {conclusion?.answer ??
-                    "This run predates conclusion synthesis. Its original model responses remain available below."}
+                  {conclusion
+                    ? conclusion.answer ??
+                      conclusion.error ??
+                      "Synthesis is still in progress."
+                    : "This run predates conclusion synthesis. Its original model responses remain available below."}
                 </p>
                 {conclusion && (
-                  <button onClick={() => setDetail(conclusion)}>
-                    Inspect synthesis inputs →
-                  </button>
+                  <div className="conclusion-actions">
+                    <button onClick={() => setDetail(conclusion)}>
+                      Inspect synthesis inputs →
+                    </button>
+                    <button
+                      className="export-conclusion"
+                      disabled={!conclusion.answer}
+                      onClick={() => downloadConclusionRecord(current, conclusion)}
+                      title={
+                        conclusion.answer
+                          ? "Download a JSONL training and provenance record"
+                          : "The conclusion must finish before it can be exported"
+                      }
+                    >
+                      ↓ Export training record (.jsonl)
+                    </button>
+                  </div>
                 )}
               </section>
 
