@@ -9,8 +9,13 @@ from time import perf_counter
 import httpx
 
 from cross_talker.exceptions import ConfigurationError, ProviderCallError
-from cross_talker.models import CrossTalkResponse, ProviderAnswer, RoundResult
-from cross_talker.prompts import SYSTEM_PROMPT, build_review_prompt
+from cross_talker.models import CrossTalkResponse, ProviderAnswer, RoundResult, RunRecap
+from cross_talker.prompts import (
+    SYSTEM_PROMPT,
+    build_conclusion_prompt,
+    build_recap_prompt,
+    build_review_prompt,
+)
 from cross_talker.providers.base import ModelProvider
 from cross_talker.storage import SQLiteRepository
 
@@ -26,6 +31,7 @@ class CrossTalker:
         *,
         default_rounds: int = 1,
         max_rounds: int = 20,
+        max_peer_answer_chars: int = 8_000,
         repository: SQLiteRepository | None = None,
     ) -> None:
         self._providers: Mapping[str, ModelProvider] = {
@@ -35,6 +41,7 @@ class CrossTalker:
             raise ConfigurationError("CrossTalker requires at least one provider")
         self.default_rounds = default_rounds
         self.max_rounds = max_rounds
+        self.max_peer_answer_chars = max_peer_answer_chars
         self.repository = repository or SQLiteRepository(":memory:")
 
     @property
@@ -65,10 +72,17 @@ class CrossTalker:
             latest = initial
 
             for round_number in range(1, round_count + 1):
-                latest = await self._run_review(
-                    run_id, prompt, selected, latest, round_number
-                )
+                latest = await self._run_review(run_id, prompt, selected, latest, round_number)
                 history.append(RoundResult(round=round_number, answers=latest))
+
+            conclusion = await self._call(
+                run_id,
+                selected[0],
+                build_conclusion_prompt(prompt, latest),
+                round_number=round_count + 1,
+                kind="conclusion",
+            )
+            await self._generate_recap(run_id, prompt, selected[0], history)
         except Exception:
             await self.repository.finish_run(run_id, "failed")
             raise
@@ -81,7 +95,42 @@ class CrossTalker:
             rounds_completed=round_count,
             history=history,
             final_answers=latest,
+            conclusion=conclusion,
         )
+
+    async def _generate_recap(
+        self,
+        run_id: str,
+        prompt: str,
+        provider: ModelProvider,
+        history: list[RoundResult],
+    ) -> None:
+        answers = [answer for level in history for answer in level.answers]
+        try:
+            content = await provider.complete(
+                build_recap_prompt(prompt, answers),
+                system_prompt=(
+                    "You synthesize multi-model discussions faithfully. "
+                    "Return only the requested JSON."
+                ),
+            )
+            cleaned = content.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.removeprefix("```json").removeprefix("```")
+                cleaned = cleaned.removesuffix("```").strip()
+            payload = json.loads(cleaned)
+            payload["generated_by"] = provider.name
+            await self.repository.save_recap(run_id, RunRecap.model_validate(payload))
+        except Exception as exc:
+            logger.exception(
+                "run_recap_failed run_id=%s provider=%s model=%s error_type=%s error=%r",
+                run_id,
+                provider.name,
+                provider.model,
+                type(exc).__name__,
+                exc,
+            )
+            await self.repository.save_recap(run_id, None, f"{type(exc).__name__}: {exc}")
 
     def _select(self, names: list[str] | None) -> list[ModelProvider]:
         if names is None:
@@ -99,10 +148,7 @@ class CrossTalker:
         self, run_id: str, prompt: str, providers: list[ModelProvider]
     ) -> list[ProviderAnswer]:
         return await self._gather(
-            [
-                self._call(run_id, provider, prompt, round_number=0)
-                for provider in providers
-            ]
+            [self._call(run_id, provider, prompt, round_number=0) for provider in providers]
         )
 
     async def _run_review(
@@ -116,10 +162,14 @@ class CrossTalker:
         calls = []
         for provider in providers:
             peers = [answer for answer in previous if answer.provider != provider.name]
-            review_prompt = build_review_prompt(prompt, provider.name, peers, round_number)
-            calls.append(
-                self._call(run_id, provider, review_prompt, round_number=round_number)
+            review_prompt = build_review_prompt(
+                prompt,
+                provider.name,
+                peers,
+                round_number,
+                max_peer_answer_chars=self.max_peer_answer_chars,
             )
+            calls.append(self._call(run_id, provider, review_prompt, round_number=round_number))
         return await self._gather(calls)
 
     async def _call(
@@ -198,9 +248,7 @@ class CrossTalker:
                     type(cause).__name__ if cause else None,
                     cause,
                 )
-            await self.repository.fail_exchange(
-                exchange_id, str(exc), diagnostic_detail
-            )
+            await self.repository.fail_exchange(exchange_id, str(exc), diagnostic_detail)
             raise ProviderCallError(
                 f"{provider.name} failed during round {round_number}: {exc}"
             ) from exc
@@ -228,7 +276,5 @@ class CrossTalker:
             responded_at=responded_at,
         )
 
-    async def _gather(
-        self, calls: list[Awaitable[ProviderAnswer]]
-    ) -> list[ProviderAnswer]:
+    async def _gather(self, calls: list[Awaitable[ProviderAnswer]]) -> list[ProviderAnswer]:
         return list(await asyncio.gather(*calls))

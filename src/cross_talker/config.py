@@ -20,7 +20,10 @@ class Settings(BaseSettings):
     )
     default_rounds: int = Field(default=1, ge=0)
     max_rounds: int = Field(default=20, ge=0)
-    request_timeout_seconds: float = Field(default=60.0, gt=0)
+    request_timeout_seconds: float = Field(default=120.0, gt=0)
+    provider_retries: int = Field(default=1, ge=0, le=3)
+    max_output_tokens: int = Field(default=2_048, ge=256, le=16_384)
+    max_peer_answer_chars: int = Field(default=8_000, ge=1_000, le=100_000)
     database_path: str = "data/cross_talker.db"
 
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")

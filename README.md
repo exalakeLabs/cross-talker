@@ -43,6 +43,12 @@ Add API keys to `.env`, then start the service:
 cross-talker
 ```
 
+Provider calls default to a 120-second timeout with one retry. Cross-check prompts include at
+most 8,000 characters from each peer response, and provider outputs are capped at 2,048 tokens
+to prevent later review rounds from growing without bound. These limits can be adjusted with
+`CROSS_TALKER_REQUEST_TIMEOUT_SECONDS`, `CROSS_TALKER_PROVIDER_RETRIES`,
+`CROSS_TALKER_MAX_OUTPUT_TOKENS`, and `CROSS_TALKER_MAX_PEER_ANSWER_CHARS`.
+
 Interactive API docs are available at `http://localhost:8000/docs`.
 
 Audit history is available through:

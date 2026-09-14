@@ -12,4 +12,3 @@ class ModelProvider(Protocol):
     async def complete(self, prompt: str, *, system_prompt: str | None = None) -> str:
         """Return plain text for a prompt."""
         ...
-

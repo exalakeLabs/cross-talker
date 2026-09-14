@@ -23,6 +23,8 @@ def build_cross_talker(
                     model=settings.openai_model,
                     base_url=settings.openai_base_url,
                     timeout=settings.request_timeout_seconds,
+                    retries=settings.provider_retries,
+                    max_output_tokens=settings.max_output_tokens,
                 )
             )
         elif name == "anthropic":
@@ -36,6 +38,8 @@ def build_cross_talker(
                     model=settings.anthropic_model,
                     base_url=settings.anthropic_base_url,
                     timeout=settings.request_timeout_seconds,
+                    retries=settings.provider_retries,
+                    max_output_tokens=settings.max_output_tokens,
                 )
             )
         else:
@@ -45,5 +49,6 @@ def build_cross_talker(
         providers,
         default_rounds=settings.default_rounds,
         max_rounds=settings.max_rounds,
+        max_peer_answer_chars=settings.max_peer_answer_chars,
         repository=repository or SQLiteRepository(settings.database_path),
     )

@@ -30,12 +30,13 @@ def build_review_prompt(
     reviewer: str,
     peer_answers: list[ProviderAnswer],
     round_number: int,
+    max_peer_answer_chars: int = 8_000,
 ) -> str:
     reviewer_name = _reviewer_name(reviewer)
     peer_names = ", ".join(_provider_name(answer.provider) for answer in peer_answers)
     rendered = "\n\n".join(
         f"--- Response from {_provider_name(answer.provider)} ({answer.model}) ---\n"
-        f"{answer.content}"
+        f"{_bounded_answer(answer.content, max_peer_answer_chars)}"
         for answer in peer_answers
     )
     prefix = (
@@ -54,13 +55,20 @@ This is cross-check round {round_number}.
 {rendered}"""
 
 
+def _bounded_answer(content: str, limit: int) -> str:
+    if len(content) <= limit:
+        return content
+    omitted = len(content) - limit
+    return f"{content[:limit]}\n\n[Peer response truncated; {omitted:,} characters omitted.]"
+
+
 def build_conclusion_prompt(
     original_prompt: str,
     final_answers: list[ProviderAnswer],
 ) -> str:
     rendered = "\n\n".join(
-        f"--- Final answer from {_model_name(answer.provider)} ({answer.model}) ---\n"
-        f"{answer.content}"
+        f"--- Final answer from {_provider_name(answer.provider)} ({answer.model}) ---\n"
+        f"{_bounded_answer(answer.content, 8_000)}"
         for answer in final_answers
     )
     return f"""Original question:
@@ -82,9 +90,7 @@ combined conclusion warranted by the responses.
 {rendered}"""
 
 
-def build_recap_prompt(
-    original_prompt: str, answers: list[ProviderAnswer]
-) -> str:
+def build_recap_prompt(original_prompt: str, answers: list[ProviderAnswer]) -> str:
     transcript = "\n\n".join(
         f"--- {answer.provider} / {answer.model} / level {answer.round} ---\n"
         f"{answer.content[:12_000]}"

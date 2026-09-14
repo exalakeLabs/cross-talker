@@ -8,4 +8,3 @@ class ConfigurationError(CrossTalkerError):
 
 class ProviderCallError(CrossTalkerError):
     """A model provider request failed."""
-

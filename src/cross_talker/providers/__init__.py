@@ -3,4 +3,3 @@ from cross_talker.providers.base import ModelProvider
 from cross_talker.providers.openai import OpenAIProvider
 
 __all__ = ["AnthropicProvider", "ModelProvider", "OpenAIProvider"]
-

@@ -63,6 +63,28 @@ async def test_cross_check_prompt_names_source_and_reviewer_models() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cross_check_truncates_oversized_peer_answers() -> None:
+    class VerboseProvider(FakeProvider):
+        async def complete(
+            self, prompt: str, *, system_prompt: str | None = None
+        ) -> str:
+            self.prompts.append(prompt)
+            return "x" * 2_000
+
+    alpha = VerboseProvider("alpha")
+    beta = VerboseProvider("beta")
+    service = CrossTalker(
+        [alpha, beta], default_rounds=1, max_peer_answer_chars=1_000
+    )
+
+    await service.ask("Keep the peer context bounded")
+
+    assert "x" * 1_000 in alpha.prompts[1]
+    assert "x" * 1_001 not in alpha.prompts[1]
+    assert "[Peer response truncated; 1,000 characters omitted.]" in alpha.prompts[1]
+
+
+@pytest.mark.asyncio
 async def test_provider_failure_logs_diagnostic_context(caplog) -> None:
     class TimingOutProvider(FakeProvider):
         async def complete(
