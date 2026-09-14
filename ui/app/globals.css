@@ -80,7 +80,11 @@ h1, h2, p { margin-top: 0; }
 .legend .anthropic { background: var(--violet); }
 .toolbar label { font-size: 9px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
 .toolbar select { border: 1px solid var(--line); border-radius: 5px; background: white; padding: 5px 26px 5px 8px; font-size: 10px; }
-.table-wrap { height: calc(100vh - 252px); overflow: auto; }
+.view-tabs { display: flex; align-self: stretch; gap: 18px; }
+.view-tabs button { position: relative; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 0 2px; cursor: pointer; font-size: 10px; font-weight: 700; }
+.view-tabs button.active { border-bottom-color: var(--ink); color: var(--ink); }
+.view-tabs button i { position: absolute; top: 10px; right: -8px; width: 6px; height: 6px; border-radius: 50%; background: #c43e34; }
+.table-wrap { flex: 1 1 auto; min-height: 180px; overflow: auto; }
 table { border-spacing: 0; border-collapse: separate; background: white; min-width: 920px; width: 100%; table-layout: fixed; }
 th { position: sticky; top: 0; z-index: 2; height: 34px; background: #f1f3f4; color: #606b75; text-align: left; padding: 0 12px; border-right: 1px solid var(--line); border-bottom: 1px solid #cbd2d8; text-transform: uppercase; letter-spacing: .08em; font-size: 9px; }
 th:nth-child(1) { width: 72px; } th:nth-child(2) { width: 175px; } th:nth-child(3), th:nth-child(4) { width: 32%; } th:nth-child(5) { width: 110px; }
