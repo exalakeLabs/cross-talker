@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+import logging
+
 import pytest
 
-from cross_talker.exceptions import ConfigurationError
+from cross_talker.exceptions import ConfigurationError, ProviderCallError
 from cross_talker.orchestrator import CrossTalker
 
 
@@ -43,13 +46,84 @@ async def test_cross_check_prompt_names_source_and_reviewer_models() -> None:
     await service.ask("What is the capital of France?")
 
     assert claude.prompts[1].startswith(
-        "This is what GPT generated. YOU are Claude, please evaluate this answer "
-        "and re-align your next one based on this analysis."
+        "This is what OpenAI responded to the original question. You are Claude. "
+        "Evaluate the response below:"
     )
     assert gpt.prompts[1].startswith(
-        "This is what Claude generated. YOU are GPT, please evaluate this answer "
-        "and re-align your next one based on this analysis."
+        "This is what Anthropic responded to the original question. You are GPT. "
+        "Evaluate the response below:"
     )
+    assert "--- Response from OpenAI (openai-test) ---" in claude.prompts[1]
+    assert "--- Response from Anthropic (anthropic-test) ---" in gpt.prompts[1]
+
+
+@pytest.mark.asyncio
+async def test_provider_failure_logs_diagnostic_context(caplog) -> None:
+    class TimingOutProvider(FakeProvider):
+        async def complete(
+            self, prompt: str, *, system_prompt: str | None = None
+        ) -> str:
+            try:
+                raise RuntimeError("socket stalled")
+            except RuntimeError as exc:
+                raise TimeoutError("request timed out after 60 seconds") from exc
+
+    provider = TimingOutProvider("anthropic")
+    service = CrossTalker([provider])
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        with pytest.raises(ProviderCallError):
+            await service.ask("Hello", rounds=0)
+
+    log_text = caplog.text
+    assert "provider_call_started" in log_text
+    assert "provider_call_failed" in log_text
+    assert "provider=anthropic" in log_text
+    assert "model=anthropic-test" in log_text
+    assert "round=0" in log_text
+    assert "error_type=TimeoutError" in log_text
+    assert "cause_type=RuntimeError" in log_text
+    assert "socket stalled" in log_text
+
+
+@pytest.mark.asyncio
+async def test_generates_and_persists_structured_run_recap() -> None:
+    class RecappingProvider(FakeProvider):
+        async def complete(
+            self, prompt: str, *, system_prompt: str | None = None
+        ) -> str:
+            self.prompts.append(prompt)
+            if prompt.startswith("Create a neutral recap"):
+                return json.dumps(
+                    {
+                        "provider_emphases": [
+                            {
+                                "provider": self.name,
+                                "initial_position": "An initial position",
+                                "main_emphases": ["Evidence"],
+                                "evolution": "The position became more precise",
+                                "final_conclusion": "A final conclusion",
+                            }
+                        ],
+                        "agreements": ["A shared claim"],
+                        "disagreements": [],
+                        "overall_synthesis": "The evidence supports the conclusion.",
+                        "unresolved_questions": ["What evidence is still missing?"],
+                    }
+                )
+            return f"{self.name} answer {len(self.prompts)}"
+
+    provider = RecappingProvider("openai")
+    service = CrossTalker([provider])
+
+    result = await service.ask("Hello", rounds=0)
+    stored = await service.repository.get_run(result.run_id)
+
+    assert stored is not None
+    assert stored.recap is not None
+    assert stored.recap.generated_by == "openai"
+    assert stored.recap.agreements == ["A shared claim"]
+    assert stored.recap_error is None
 
 
 @pytest.mark.asyncio

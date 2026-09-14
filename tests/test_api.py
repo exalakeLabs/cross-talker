@@ -72,6 +72,7 @@ async def test_http_request_is_persisted_and_retrievable(
     assert exchange["round"] == 0
     assert exchange["prompt_sent"] == prompt
     assert exchange["answer"]
+    assert exchange["diagnostic_detail"] is None
     assert exchange["requested_at"]
     assert exchange["responded_at"]
 

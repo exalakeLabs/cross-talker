@@ -29,6 +29,7 @@ async def test_persists_exact_exchange_metadata(tmp_path) -> None:
     assert stored.exchanges[0].round == 1
     assert stored.exchanges[0].prompt_sent == "Exact engineered prompt"
     assert stored.exchanges[0].answer == "Model answer"
+    assert stored.exchanges[0].diagnostic_detail is None
     assert stored.exchanges[0].requested_at == requested_at
     assert stored.exchanges[0].responded_at == responded_at
 
@@ -53,3 +54,25 @@ async def test_reads_do_not_reapply_wal_mode(tmp_path, monkeypatch) -> None:
     assert await repository.get_run(run_id) is not None
     assert await repository.list_runs()
     assert journal_mode_calls == []
+
+
+async def test_persists_provider_failure_diagnostics(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "audit.db")
+    run_id, _ = await repository.create_run("Original question", 0)
+    exchange_id, _ = await repository.begin_exchange(
+        run_id, "anthropic", "claude-test", 0, "Original question"
+    )
+
+    await repository.fail_exchange(
+        exchange_id,
+        "Anthropic request timed out after 60 seconds",
+        "error_type=TimeoutError\ncause_type=ReadTimeout",
+    )
+
+    stored = await repository.get_run(run_id)
+
+    assert stored is not None
+    assert stored.exchanges[0].status == "failed"
+    assert stored.exchanges[0].diagnostic_detail == (
+        "error_type=TimeoutError\ncause_type=ReadTimeout"
+    )

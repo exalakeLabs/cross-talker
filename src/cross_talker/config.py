@@ -19,7 +19,7 @@ class Settings(BaseSettings):
         default_factory=lambda: ["openai", "anthropic"]
     )
     default_rounds: int = Field(default=1, ge=0)
-    max_rounds: int = Field(default=5, ge=0)
+    max_rounds: int = Field(default=20, ge=0)
     request_timeout_seconds: float = Field(default=60.0, gt=0)
     database_path: str = "data/cross_talker.db"
 

@@ -57,8 +57,32 @@ class StoredExchange(BaseModel):
     answer: str | None
     status: str
     error: str | None
+    diagnostic_detail: str | None
     requested_at: datetime
     responded_at: datetime | None
+
+
+class ProviderEmphasis(BaseModel):
+    provider: str
+    initial_position: str
+    main_emphases: list[str]
+    evolution: str
+    final_conclusion: str
+
+
+class Disagreement(BaseModel):
+    topic: str
+    positions: dict[str, str]
+    nature: str
+
+
+class RunRecap(BaseModel):
+    provider_emphases: list[ProviderEmphasis]
+    agreements: list[str]
+    disagreements: list[Disagreement]
+    overall_synthesis: str
+    unresolved_questions: list[str]
+    generated_by: str
 
 
 class StoredRun(BaseModel):
@@ -69,8 +93,11 @@ class StoredRun(BaseModel):
     created_at: datetime
     completed_at: datetime | None
     exchanges: list[StoredExchange] = Field(default_factory=list)
+    recap: RunRecap | None = None
+    recap_error: str | None = None
 
 
 class HealthResponse(BaseModel):
     status: str
     configured_providers: list[str]
+    max_rounds: int

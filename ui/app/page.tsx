@@ -11,6 +11,7 @@ type Exchange = {
   answer: string | null;
   status: string;
   error: string | null;
+  diagnostic_detail: string | null;
   requested_at: string;
   responded_at: string | null;
 };
@@ -23,11 +24,31 @@ type Run = {
   created_at: string;
   completed_at: string | null;
   exchanges: Exchange[];
+  recap: {
+    provider_emphases: {
+      provider: string;
+      initial_position: string;
+      main_emphases: string[];
+      evolution: string;
+      final_conclusion: string;
+    }[];
+    agreements: string[];
+    disagreements: {
+      topic: string;
+      positions: Record<string, string>;
+      nature: string;
+    }[];
+    overall_synthesis: string;
+    unresolved_questions: string[];
+    generated_by: string;
+  } | null;
+  recap_error: string | null;
 };
 
 type Health = {
   status: string;
   configured_providers: string[];
+  max_rounds?: number;
 };
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -57,6 +78,7 @@ export default function Home() {
   const [detail, setDetail] = useState<Exchange | null>(null);
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState("all");
+  const [view, setView] = useState<"exchanges" | "diagnostics">("exchanges");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -70,6 +92,7 @@ export default function Home() {
     "anthropic",
   ]);
   const [rounds, setRounds] = useState(2);
+  const [maxRounds, setMaxRounds] = useState(20);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
@@ -118,6 +141,10 @@ export default function Home() {
       .then(async (response) => {
         if (!response.ok) return;
         const health: Health = await response.json();
+        if (typeof health.max_rounds === "number") {
+          setMaxRounds(health.max_rounds);
+          setRounds((current) => Math.min(current, health.max_rounds ?? 20));
+        }
         if (health.configured_providers.length) {
           setAvailableProviders(health.configured_providers);
           setSelectedProviders(health.configured_providers);
@@ -302,9 +329,22 @@ export default function Home() {
               </div>
 
               <div className="toolbar">
-                <div className="legend">
-                  <span><i className="openai" /> OpenAI</span>
-                  <span><i className="anthropic" /> Claude</span>
+                <div className="view-tabs" aria-label="Run view">
+                  <button
+                    className={view === "exchanges" ? "active" : ""}
+                    onClick={() => setView("exchanges")}
+                  >
+                    Exchanges
+                  </button>
+                  <button
+                    className={view === "diagnostics" ? "active" : ""}
+                    onClick={() => setView("diagnostics")}
+                  >
+                    Diagnostics
+                    {current.exchanges.some((item) => item.status === "failed") && (
+                      <i aria-label="This run contains failures" />
+                    )}
+                  </button>
                 </div>
                 <label>
                   Provider
@@ -317,48 +357,204 @@ export default function Home() {
                 </label>
               </div>
 
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Level</th>
-                      <th>Provider / model</th>
-                      <th>Prompt sent</th>
-                      <th>Answer returned</th>
-                      <th>Timing</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {exchanges.map((exchange, index) => (
-                      <tr
-                        key={exchange.exchange_id}
-                        className={`${index === 0 || exchanges[index - 1].round !== exchange.round ? "level-start" : ""} ${detail?.exchange_id === exchange.exchange_id ? "selected" : ""}`}
-                        onClick={() => setDetail(exchange)}
-                      >
-                        <td className="level">
-                          <b>{exchange.round}</b>
-                          <small>{exchange.round ? "Review" : "Initial"}</small>
-                        </td>
-                        <td>
-                          <div className={`provider ${exchange.provider}`}>
-                            <span>{exchange.provider === "anthropic" ? "C" : "O"}</span>
-                            <div>
-                              <b>{providerName(exchange.provider)}</b>
-                              <small>{exchange.model}</small>
-                            </div>
-                          </div>
-                        </td>
-                        <td><p className="clamp">{exchange.prompt_sent}</p></td>
-                        <td><p className="clamp">{exchange.answer ?? exchange.error ?? "Pending"}</p></td>
-                        <td>
-                          <b className="timing">{latency(exchange.requested_at, exchange.responded_at)}</b>
-                          <small>{formatDate(exchange.requested_at)}</small>
-                        </td>
+              {view === "exchanges" ? (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Level</th>
+                        <th>Provider / model</th>
+                        <th>Prompt sent</th>
+                        <th>Answer returned</th>
+                        <th>Timing</th>
                       </tr>
+                    </thead>
+                    <tbody>
+                      {exchanges.map((exchange, index) => (
+                        <tr
+                          key={exchange.exchange_id}
+                          className={`${index === 0 || exchanges[index - 1].round !== exchange.round ? "level-start" : ""} ${detail?.exchange_id === exchange.exchange_id ? "selected" : ""}`}
+                          onClick={() => setDetail(exchange)}
+                        >
+                          <td className="level">
+                            <b>{exchange.round}</b>
+                            <small>{exchange.round ? "Review" : "Initial"}</small>
+                          </td>
+                          <td>
+                            <div className={`provider ${exchange.provider}`}>
+                              <span>{exchange.provider === "anthropic" ? "C" : "O"}</span>
+                              <div>
+                                <b>{providerName(exchange.provider)}</b>
+                                <small>{exchange.model}</small>
+                              </div>
+                            </div>
+                          </td>
+                          <td><p className="clamp">{exchange.prompt_sent}</p></td>
+                          <td><p className="clamp">{exchange.answer ?? exchange.error ?? "Pending"}</p></td>
+                          <td>
+                            <b className="timing">{latency(exchange.requested_at, exchange.responded_at)}</b>
+                            <small>{formatDate(exchange.requested_at)}</small>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <section className="diagnostics">
+                  <header>
+                    <div>
+                      <small>Service-side provider activity</small>
+                      <h3>Run diagnostics</h3>
+                    </div>
+                    <p>
+                      <b>{exchanges.filter((item) => item.status === "failed").length}</b>
+                      {" "}failures · <b>{exchanges.length}</b> calls
+                    </p>
+                  </header>
+                  {current.recap ? (
+                    <section className="run-recap">
+                      <header>
+                        <div>
+                          <small>Cross-model synthesis</small>
+                          <h3>Discussion recap</h3>
+                        </div>
+                        <span>Generated by {providerName(current.recap.generated_by)}</span>
+                      </header>
+
+                      <div className="emphasis-grid">
+                        {current.recap.provider_emphases.map((item) => (
+                          <article key={item.provider}>
+                            <header>
+                              <b>{providerName(item.provider)}</b>
+                              <small>Provider emphasis</small>
+                            </header>
+                            <div>
+                              <h4>Initial position</h4>
+                              <p>{item.initial_position}</p>
+                              <h4>Main emphases</h4>
+                              <ul>
+                                {item.main_emphases.map((emphasis) => (
+                                  <li key={emphasis}>{emphasis}</li>
+                                ))}
+                              </ul>
+                              <h4>Evolution</h4>
+                              <p>{item.evolution}</p>
+                              <h4>Final conclusion</h4>
+                              <p>{item.final_conclusion}</p>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+
+                      <div className="consensus-grid">
+                        <article className="agreement">
+                          <header><b>Agreement</b><small>{current.recap.agreements.length} points</small></header>
+                          <ul>
+                            {current.recap.agreements.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                            {!current.recap.agreements.length && <li>No clear agreement identified.</li>}
+                          </ul>
+                        </article>
+                        <article className="unresolved">
+                          <header><b>Unresolved</b><small>{current.recap.unresolved_questions.length} questions</small></header>
+                          <ul>
+                            {current.recap.unresolved_questions.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                            {!current.recap.unresolved_questions.length && <li>No unresolved questions identified.</li>}
+                          </ul>
+                        </article>
+                      </div>
+
+                      <article className="disagreement">
+                        <header>
+                          <b>Disagreement</b>
+                          <small>{current.recap.disagreements.length} topics</small>
+                        </header>
+                        {current.recap.disagreements.length ? (
+                          <div className="disagreement-table">
+                            {current.recap.disagreements.map((item) => (
+                              <div className="disagreement-row" key={item.topic}>
+                                <div>
+                                  <b>{item.topic}</b>
+                                  <small>{item.nature}</small>
+                                </div>
+                                <dl>
+                                  {Object.entries(item.positions).map(([name, position]) => (
+                                    <div key={name}>
+                                      <dt>{providerName(name)}</dt>
+                                      <dd>{position}</dd>
+                                    </div>
+                                  ))}
+                                </dl>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p>No material disagreement was identified.</p>
+                        )}
+                      </article>
+
+                      <article className="synthesis">
+                        <header><b>Overall synthesis</b></header>
+                        <p>{current.recap.overall_synthesis}</p>
+                      </article>
+                    </section>
+                  ) : (
+                    <p className={`recap-unavailable ${current.recap_error ? "failed" : ""}`}>
+                      {current.recap_error
+                        ? `Recap generation failed: ${current.recap_error}`
+                        : "No synthesized recap is available for this run."}
+                    </p>
+                  )}
+                  <div className="diagnostic-divider">
+                    <span>Provider call log</span>
+                  </div>
+                  <div className="diagnostic-list">
+                    {exchanges.map((exchange) => (
+                      <article
+                        className={`diagnostic-event ${exchange.status}`}
+                        key={exchange.exchange_id}
+                      >
+                        <span className="event-marker" />
+                        <div className="event-body">
+                          <header>
+                            <div>
+                              <span className={`event-status ${exchange.status}`}>
+                                {exchange.status}
+                              </span>
+                              <b>{providerName(exchange.provider)}</b>
+                              <code>{exchange.model}</code>
+                            </div>
+                            <time>{formatDate(exchange.requested_at)}</time>
+                          </header>
+                          <dl>
+                            <div><dt>Level</dt><dd>{exchange.round}</dd></div>
+                            <div><dt>Duration</dt><dd>{latency(exchange.requested_at, exchange.responded_at)}</dd></div>
+                            <div><dt>Exchange</dt><dd><code>{exchange.exchange_id.slice(0, 12)}…</code></dd></div>
+                          </dl>
+                          {exchange.error ? (
+                            <>
+                              <p className="event-error">{exchange.error}</p>
+                              <pre>{exchange.diagnostic_detail ?? "No additional diagnostic detail was captured."}</pre>
+                            </>
+                          ) : (
+                            <p className="event-success">
+                              Provider response completed successfully
+                              {exchange.answer ? ` · ${exchange.answer.length.toLocaleString()} characters` : ""}.
+                            </p>
+                          )}
+                        </div>
+                      </article>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                    {!exchanges.length && (
+                      <p className="empty-diagnostics">No provider calls match this filter.</p>
+                    )}
+                  </div>
+                </section>
+              )}
             </>
           ) : (
             !loading && !error && <p className="empty">No stored interactions yet.</p>
@@ -480,12 +676,12 @@ export default function Home() {
                   <small>
                     {selectedProviders.length < 2
                       ? "A second model is required for cross-checking."
-                      : "Each model reviews the other model at every level."}
+                      : `Each model reviews the other model at every level. Maximum ${maxRounds}.`}
                   </small>
                 </span>
                 <input
                   disabled={submitting || selectedProviders.length < 2}
-                  max={5}
+                  max={maxRounds}
                   min={0}
                   onChange={(event) => setRounds(Number(event.target.value))}
                   type="number"

@@ -39,7 +39,11 @@ def get_cross_talker() -> CrossTalker:
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     settings = get_settings()
-    return HealthResponse(status="ok", configured_providers=settings.providers)
+    return HealthResponse(
+        status="ok",
+        configured_providers=settings.providers,
+        max_rounds=settings.max_rounds,
+    )
 
 
 @app.post("/v1/cross-talk", response_model=CrossTalkResponse)

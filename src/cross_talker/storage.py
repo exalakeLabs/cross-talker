@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from cross_talker.models import StoredExchange, StoredRun
+from cross_talker.models import RunRecap, StoredExchange, StoredRun
 
 
 def utc_now() -> datetime:
@@ -62,7 +63,9 @@ class SQLiteRepository:
                     rounds_requested INTEGER NOT NULL,
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
-                    completed_at TEXT
+                    completed_at TEXT,
+                    recap_json TEXT,
+                    recap_error TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS exchanges (
@@ -75,6 +78,7 @@ class SQLiteRepository:
                     answer TEXT,
                     status TEXT NOT NULL,
                     error TEXT,
+                    diagnostic_detail TEXT,
                     requested_at TEXT NOT NULL,
                     responded_at TEXT
                 );
@@ -85,6 +89,22 @@ class SQLiteRepository:
                     ON runs(created_at DESC);
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(exchanges)").fetchall()
+            }
+            if "diagnostic_detail" not in columns:
+                connection.execute(
+                    "ALTER TABLE exchanges ADD COLUMN diagnostic_detail TEXT"
+                )
+            run_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(runs)").fetchall()
+            }
+            if "recap_json" not in run_columns:
+                connection.execute("ALTER TABLE runs ADD COLUMN recap_json TEXT")
+            if "recap_error" not in run_columns:
+                connection.execute("ALTER TABLE runs ADD COLUMN recap_error TEXT")
 
     async def create_run(self, original_prompt: str, rounds_requested: int) -> tuple[str, datetime]:
         run_id = str(uuid4())
@@ -176,24 +196,34 @@ class SQLiteRepository:
                 (answer, responded_at.isoformat(), exchange_id),
             )
 
-    async def fail_exchange(self, exchange_id: str, error: str) -> None:
+    async def fail_exchange(
+        self, exchange_id: str, error: str, diagnostic_detail: str | None = None
+    ) -> None:
         responded_at = utc_now()
         async with self._write_lock:
             await asyncio.to_thread(
-                self._fail_exchange_sync, exchange_id, error, responded_at
+                self._fail_exchange_sync,
+                exchange_id,
+                error,
+                diagnostic_detail,
+                responded_at,
             )
 
     def _fail_exchange_sync(
-        self, exchange_id: str, error: str, responded_at: datetime
+        self,
+        exchange_id: str,
+        error: str,
+        diagnostic_detail: str | None,
+        responded_at: datetime,
     ) -> None:
         with self._connect() as connection:
             connection.execute(
                 """
                 UPDATE exchanges
-                SET status = 'failed', error = ?, responded_at = ?
+                SET status = 'failed', error = ?, diagnostic_detail = ?, responded_at = ?
                 WHERE exchange_id = ?
                 """,
-                (error, responded_at.isoformat(), exchange_id),
+                (error, diagnostic_detail, responded_at.isoformat(), exchange_id),
             )
 
     async def finish_run(self, run_id: str, status: str) -> None:
@@ -205,6 +235,24 @@ class SQLiteRepository:
             connection.execute(
                 "UPDATE runs SET status = ?, completed_at = ? WHERE run_id = ?",
                 (status, completed_at.isoformat(), run_id),
+            )
+
+    async def save_recap(
+        self, run_id: str, recap: RunRecap | None, error: str | None = None
+    ) -> None:
+        recap_json = recap.model_dump_json() if recap else None
+        async with self._write_lock:
+            await asyncio.to_thread(
+                self._save_recap_sync, run_id, recap_json, error
+            )
+
+    def _save_recap_sync(
+        self, run_id: str, recap_json: str | None, error: str | None
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE runs SET recap_json = ?, recap_error = ? WHERE run_id = ?",
+                (recap_json, error, run_id),
             )
 
     async def get_run(self, run_id: str) -> StoredRun | None:
@@ -259,9 +307,14 @@ class SQLiteRepository:
                     answer=row["answer"],
                     status=row["status"],
                     error=row["error"],
+                    diagnostic_detail=row["diagnostic_detail"],
                     requested_at=row["requested_at"],
                     responded_at=row["responded_at"],
                 )
                 for row in exchanges
             ],
+            recap=RunRecap.model_validate(json.loads(run["recap_json"]))
+            if run["recap_json"]
+            else None,
+            recap_error=run["recap_error"],
         )
