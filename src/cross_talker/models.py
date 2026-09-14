@@ -45,6 +45,7 @@ class CrossTalkResponse(BaseModel):
     rounds_completed: int
     history: list[RoundResult]
     final_answers: list[ProviderAnswer]
+    conclusion: ProviderAnswer
 
 
 class StoredExchange(BaseModel):
@@ -53,6 +54,7 @@ class StoredExchange(BaseModel):
     provider: str
     model: str
     round: int
+    kind: str = "response"
     prompt_sent: str
     answer: str | None
     status: str

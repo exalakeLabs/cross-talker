@@ -32,9 +32,14 @@ async def test_distributes_and_cross_checks_answers() -> None:
     assert len(result.history) == 2
     assert [answer.provider for answer in result.final_answers] == ["alpha", "beta"]
     assert result.run_id
+    assert result.conclusion.provider == "alpha"
+    assert result.conclusion.round == 2
+    assert result.conclusion.content == "alpha answer 3"
     assert "beta answer 1" in alpha.prompts[1]
     assert "alpha answer 1" in beta.prompts[1]
     assert "alpha answer 1" not in alpha.prompts[1]
+    assert "alpha answer 2" in alpha.prompts[2]
+    assert "beta answer 2" in alpha.prompts[2]
 
 
 @pytest.mark.asyncio
@@ -134,15 +139,17 @@ async def test_zero_rounds_returns_initial_answers() -> None:
 
     assert len(result.history) == 1
     assert all(answer.round == 0 for answer in result.final_answers)
+    assert result.conclusion.round == 1
 
     stored = await service.repository.get_run(result.run_id)
     assert stored is not None
     assert stored.status == "completed"
-    assert len(stored.exchanges) == 2
+    assert len(stored.exchanges) == 3
     assert stored.exchanges[0].prompt_sent == "Hello"
     assert stored.exchanges[0].provider in {"alpha", "beta"}
     assert stored.exchanges[0].answer is not None
     assert stored.exchanges[0].requested_at.tzinfo is not None
+    assert stored.exchanges[-1].kind == "conclusion"
 
 
 @pytest.mark.asyncio
@@ -163,6 +170,7 @@ async def test_single_provider_supports_initial_answer_only() -> None:
     result = await service.ask("Hello", rounds=0)
 
     assert len(result.final_answers) == 1
+    assert result.conclusion.provider == "alpha"
 
 
 @pytest.mark.asyncio

@@ -74,6 +74,7 @@ class SQLiteRepository:
                     provider TEXT NOT NULL,
                     model TEXT NOT NULL,
                     round INTEGER NOT NULL,
+                    kind TEXT NOT NULL DEFAULT 'response',
                     prompt_sent TEXT NOT NULL,
                     answer TEXT,
                     status TEXT NOT NULL,
@@ -89,6 +90,15 @@ class SQLiteRepository:
                     ON runs(created_at DESC);
                 """
             )
+            exchange_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(exchanges)")
+            }
+            if "kind" not in exchange_columns:
+                connection.execute(
+                    "ALTER TABLE exchanges "
+                    "ADD COLUMN kind TEXT NOT NULL DEFAULT 'response'"
+                )
             columns = {
                 row["name"]
                 for row in connection.execute("PRAGMA table_info(exchanges)").fetchall()
@@ -129,7 +139,14 @@ class SQLiteRepository:
             )
 
     async def begin_exchange(
-        self, run_id: str, provider: str, model: str, round_number: int, prompt: str
+        self,
+        run_id: str,
+        provider: str,
+        model: str,
+        round_number: int,
+        prompt: str,
+        *,
+        kind: str = "response",
     ) -> tuple[str, datetime]:
         exchange_id = str(uuid4())
         requested_at = utc_now()
@@ -142,6 +159,7 @@ class SQLiteRepository:
                 model,
                 round_number,
                 prompt,
+                kind,
                 requested_at,
             )
         return exchange_id, requested_at
@@ -154,15 +172,16 @@ class SQLiteRepository:
         model: str,
         round_number: int,
         prompt: str,
+        kind: str,
         requested_at: datetime,
     ) -> None:
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO exchanges (
-                    exchange_id, run_id, provider, model, round, prompt_sent,
+                    exchange_id, run_id, provider, model, round, kind, prompt_sent,
                     status, requested_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
                 """,
                 (
                     exchange_id,
@@ -170,6 +189,7 @@ class SQLiteRepository:
                     provider,
                     model,
                     round_number,
+                    kind,
                     prompt,
                     requested_at.isoformat(),
                 ),
@@ -303,6 +323,7 @@ class SQLiteRepository:
                     provider=row["provider"],
                     model=row["model"],
                     round=row["round"],
+                    kind=row["kind"],
                     prompt_sent=row["prompt_sent"],
                     answer=row["answer"],
                     status=row["status"],

@@ -7,6 +7,7 @@ type Exchange = {
   provider: string;
   model: string;
   round: number;
+  kind: "response" | "conclusion";
   prompt_sent: string;
   answer: string | null;
   status: string;
@@ -51,7 +52,15 @@ type Health = {
   max_rounds?: number;
 };
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const CONFIGURED_API = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+
+function apiBase() {
+  if (CONFIGURED_API) return CONFIGURED_API;
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:8000`;
+  }
+  return "https://localhost:8000";
+}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
@@ -70,6 +79,59 @@ function latency(start: string, end: string | null) {
 
 function providerName(value: string) {
   return value === "anthropic" ? "Claude" : value === "openai" ? "OpenAI" : value;
+}
+
+function downloadConclusionRecord(run: Run, conclusion: Exchange) {
+  if (!conclusion.answer) return;
+  const responseRounds = run.exchanges
+    .filter((exchange) => exchange.kind !== "conclusion")
+    .map((exchange) => exchange.round);
+  const finalRound = responseRounds.length ? Math.max(...responseRounds) : 0;
+  const finalResponses = run.exchanges
+    .filter(
+      (exchange) =>
+        exchange.kind !== "conclusion" && exchange.round === finalRound,
+    )
+    .map((exchange) => ({
+      exchange_id: exchange.exchange_id,
+      provider: exchange.provider,
+      model: exchange.model,
+      content: exchange.answer,
+      status: exchange.status,
+      responded_at: exchange.responded_at,
+    }));
+  const record = {
+    schema_version: "cross-talker.training.v1",
+    messages: [
+      { role: "user", content: run.original_prompt },
+      { role: "assistant", content: conclusion.answer },
+    ],
+    cross_talker: {
+      run_id: run.run_id,
+      run_created_at: run.created_at,
+      rounds_requested: run.rounds_requested,
+      final_round: finalRound,
+      final_responses: finalResponses,
+      synthesis: {
+        exchange_id: conclusion.exchange_id,
+        provider: conclusion.provider,
+        model: conclusion.model,
+        input: conclusion.prompt_sent,
+        responded_at: conclusion.responded_at,
+      },
+    },
+  };
+  const blob = new Blob([`${JSON.stringify(record)}\n`], {
+    type: "application/x-ndjson;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `cross-talker-${run.run_id}.jsonl`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 export default function Home() {
@@ -97,7 +159,9 @@ export default function Home() {
   const [submitError, setSubmitError] = useState("");
 
   const fetchRun = useCallback(async (id: string) => {
-    const response = await fetch(`${API}/v1/runs/${id}`, { cache: "no-store" });
+    const response = await fetch(`${apiBase()}/v1/runs/${id}`, {
+      cache: "no-store",
+    });
     if (!response.ok) throw new Error("Unable to load the selected run.");
     const run: Run = await response.json();
     setCurrent(run);
@@ -113,7 +177,9 @@ export default function Home() {
     async (quiet = false) => {
       if (!quiet) setLoading(true);
       try {
-        const response = await fetch(`${API}/v1/runs?limit=100`, { cache: "no-store" });
+        const response = await fetch(`${apiBase()}/v1/runs?limit=100`, {
+          cache: "no-store",
+        });
         if (!response.ok) throw new Error("Unable to load run history.");
         const history: Run[] = await response.json();
         setRuns(history);
@@ -131,13 +197,16 @@ export default function Home() {
   );
 
   useEffect(() => {
-    void refresh();
+    const initial = window.setTimeout(() => void refresh(), 0);
     const timer = window.setInterval(() => void refresh(true), 4000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
   }, [refresh]);
 
   useEffect(() => {
-    void fetch(`${API}/health`, { cache: "no-store" })
+    void fetch(`${apiBase()}/health`, { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) return;
         const health: Health = await response.json();
@@ -179,7 +248,7 @@ export default function Home() {
     setSubmitting(true);
     setSubmitError("");
     try {
-      const response = await fetch(`${API}/v1/cross-talk`, {
+      const response = await fetch(`${apiBase()}/v1/cross-talk`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -221,10 +290,18 @@ export default function Home() {
     [current],
   );
 
+  const conclusion = useMemo(
+    () =>
+      current?.exchanges.find((item) => item.kind === "conclusion") ?? null,
+    [current],
+  );
+
   const exchanges = useMemo(
     () =>
       (current?.exchanges ?? []).filter(
-        (item) => provider === "all" || item.provider === provider,
+        (item) =>
+          item.kind !== "conclusion" &&
+          (provider === "all" || item.provider === provider),
       ),
     [current, provider],
   );
@@ -327,6 +404,54 @@ export default function Home() {
                   </span>
                 </div>
               </div>
+
+              <section className={`conclusion-panel ${conclusion ? "ready" : "legacy"}`}>
+                <div className="conclusion-heading">
+                  <div>
+                    <small>Synthesized conclusion</small>
+                    <h3>
+                      {conclusion
+                        ? "What the models concluded"
+                        : "No synthesis available"}
+                    </h3>
+                  </div>
+                  {conclusion && (
+                    <div className={`provider ${conclusion.provider}`}>
+                      <span>{conclusion.provider === "anthropic" ? "C" : "O"}</span>
+                      <div>
+                        <b>{providerName(conclusion.provider)}</b>
+                        <small>{conclusion.model} · synthesis</small>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <p>
+                  {conclusion
+                    ? conclusion.answer ??
+                      conclusion.error ??
+                      "Synthesis is still in progress."
+                    : "This run predates conclusion synthesis. Its original model responses remain available below."}
+                </p>
+                {conclusion && (
+                  <div className="conclusion-actions">
+                    <button onClick={() => setDetail(conclusion)}>
+                      Inspect synthesis inputs →
+                    </button>
+                    <button
+                      className="export-conclusion"
+                      disabled={!conclusion.answer}
+                      onClick={() => downloadConclusionRecord(current, conclusion)}
+                      title={
+                        conclusion.answer
+                          ? "Download a JSONL training and provenance record"
+                          : "The conclusion must finish before it can be exported"
+                      }
+                    >
+                      ↓ Export training record (.jsonl)
+                    </button>
+                  </div>
+                )}
+              </section>
 
               <div className="toolbar">
                 <div className="view-tabs" aria-label="Run view">
@@ -567,7 +692,10 @@ export default function Home() {
           <header>
             <div>
               <small>Exchange detail</small>
-              <h2>Level {detail.round} · {providerName(detail.provider)}</h2>
+              <h2>
+                {detail.kind === "conclusion" ? "Conclusion" : `Level ${detail.round}`} ·{" "}
+                {providerName(detail.provider)}
+              </h2>
             </div>
             <button aria-label="Close details" onClick={() => setDetail(null)}>×</button>
           </header>
@@ -578,10 +706,15 @@ export default function Home() {
             <div><dt>Exchange ID</dt><dd><code>{detail.exchange_id.slice(0, 12)}…</code></dd></div>
           </dl>
           <article>
-            <header><b>Prompt sent</b><small>{detail.prompt_sent.length} chars</small></header>
+            <header>
+              <b>{detail.kind === "conclusion" ? "Responses provided to the engine" : "Prompt sent"}</b>
+              <small>{detail.prompt_sent.length} chars</small>
+            </header>
             <pre>{detail.prompt_sent}</pre>
           </article>
-          <div className="flow">↓ provider response</div>
+          <div className="flow">
+            ↓ {detail.kind === "conclusion" ? "synthesized conclusion" : "provider response"}
+          </div>
           <article className="answer">
             <header><b>Answer returned</b><small>{detail.answer?.length ?? 0} chars</small></header>
             <pre>{detail.answer ?? detail.error ?? "Pending"}</pre>

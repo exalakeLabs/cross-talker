@@ -9,8 +9,8 @@ from time import perf_counter
 import httpx
 
 from cross_talker.exceptions import ConfigurationError, ProviderCallError
-from cross_talker.models import CrossTalkResponse, ProviderAnswer, RoundResult, RunRecap
-from cross_talker.prompts import SYSTEM_PROMPT, build_recap_prompt, build_review_prompt
+from cross_talker.models import CrossTalkResponse, ProviderAnswer, RoundResult
+from cross_talker.prompts import SYSTEM_PROMPT, build_review_prompt
 from cross_talker.providers.base import ModelProvider
 from cross_talker.storage import SQLiteRepository
 
@@ -69,7 +69,6 @@ class CrossTalker:
                     run_id, prompt, selected, latest, round_number
                 )
                 history.append(RoundResult(round=round_number, answers=latest))
-            await self._generate_recap(run_id, prompt, selected[0], history)
         except Exception:
             await self.repository.finish_run(run_id, "failed")
             raise
@@ -83,52 +82,6 @@ class CrossTalker:
             history=history,
             final_answers=latest,
         )
-
-    async def _generate_recap(
-        self,
-        run_id: str,
-        prompt: str,
-        provider: ModelProvider,
-        history: list[RoundResult],
-    ) -> None:
-        answers = [answer for level in history for answer in level.answers]
-        recap_prompt = build_recap_prompt(prompt, answers)
-        try:
-            content = await provider.complete(
-                recap_prompt,
-                system_prompt=(
-                    "You synthesize multi-model discussions faithfully. "
-                    "Return only the requested JSON."
-                ),
-            )
-            cleaned = content.strip()
-            if cleaned.startswith("```"):
-                cleaned = cleaned.removeprefix("```json").removeprefix("```")
-                cleaned = cleaned.removesuffix("```").strip()
-            payload = json.loads(cleaned)
-            payload["generated_by"] = provider.name
-            recap = RunRecap.model_validate(payload)
-            await self.repository.save_recap(run_id, recap)
-            logger.info(
-                "run_recap_completed run_id=%s provider=%s model=%s",
-                run_id,
-                provider.name,
-                provider.model,
-            )
-        except Exception as exc:
-            logger.exception(
-                "run_recap_failed run_id=%s provider=%s model=%s error_type=%s error=%r",
-                run_id,
-                provider.name,
-                provider.model,
-                type(exc).__name__,
-                exc,
-            )
-            await self.repository.save_recap(
-                run_id,
-                None,
-                f"{type(exc).__name__}: {exc}",
-            )
 
     def _select(self, names: list[str] | None) -> list[ModelProvider]:
         if names is None:
@@ -176,9 +129,15 @@ class CrossTalker:
         prompt: str,
         *,
         round_number: int,
+        kind: str = "response",
     ) -> ProviderAnswer:
         exchange_id, requested_at = await self.repository.begin_exchange(
-            run_id, provider.name, provider.model, round_number, prompt
+            run_id,
+            provider.name,
+            provider.model,
+            round_number,
+            prompt,
+            kind=kind,
         )
         started_at = perf_counter()
         logger.info(

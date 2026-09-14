@@ -27,11 +27,60 @@ async def test_persists_exact_exchange_metadata(tmp_path) -> None:
     assert stored.exchanges[0].provider == "anthropic"
     assert stored.exchanges[0].model == "claude-test"
     assert stored.exchanges[0].round == 1
+    assert stored.exchanges[0].kind == "response"
     assert stored.exchanges[0].prompt_sent == "Exact engineered prompt"
     assert stored.exchanges[0].answer == "Model answer"
     assert stored.exchanges[0].diagnostic_detail is None
     assert stored.exchanges[0].requested_at == requested_at
     assert stored.exchanges[0].responded_at == responded_at
+
+
+async def test_migrates_existing_exchange_table_for_conclusions(tmp_path) -> None:
+    database_path = tmp_path / "legacy.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE runs (
+                run_id TEXT PRIMARY KEY,
+                original_prompt TEXT NOT NULL,
+                rounds_requested INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                completed_at TEXT
+            );
+            CREATE TABLE exchanges (
+                exchange_id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                round INTEGER NOT NULL,
+                prompt_sent TEXT NOT NULL,
+                answer TEXT,
+                status TEXT NOT NULL,
+                error TEXT,
+                requested_at TEXT NOT NULL,
+                responded_at TEXT
+            );
+            """
+        )
+
+    repository = SQLiteRepository(database_path)
+    run_id, _ = await repository.create_run("Question", 0)
+    exchange_id, _ = await repository.begin_exchange(
+        run_id,
+        "openai",
+        "test-model",
+        1,
+        "Synthesize the responses",
+        kind="conclusion",
+    )
+    await repository.finish_exchange(exchange_id, "Combined conclusion")
+
+    stored = await repository.get_run(run_id)
+
+    assert stored is not None
+    assert stored.exchanges[0].kind == "conclusion"
+    assert stored.exchanges[0].answer == "Combined conclusion"
 
 
 async def test_reads_do_not_reapply_wal_mode(tmp_path, monkeypatch) -> None:

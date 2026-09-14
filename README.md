@@ -13,15 +13,18 @@ other services can be added without changing the round-robin logic.
 1. Round 0 sends the original prompt to all selected providers concurrently.
 2. Each cross-check round sends every model the latest answers from all *other* models.
 3. The model must inspect factual claims and reasoning, then return a corrected standalone answer.
-4. The API returns the full round history and the final answer from each provider.
+4. After the final review round, a lead model receives every final response and synthesizes one
+   standalone conclusion that preserves consensus, exposes disagreements, and states uncertainty.
+5. The API returns the full round history, each provider's final answer, and the synthesis.
 
 Every run is also written to SQLite under `./data/cross_talker.db`. The audit record includes the original prompt, each exact
-provider-specific prompt, every answer, provider and model names, iteration level, status, and UTC
-request/response timestamps. Configure its location with `CROSS_TALKER_DATABASE_PATH`.
+provider-specific prompt, every answer, the conclusion synthesis and its complete input prompt,
+provider and model names, exchange kind, iteration level, status, and UTC request/response
+timestamps. Configure its location with `CROSS_TALKER_DATABASE_PATH`.
 
-The service deliberately does not declare a single answer the winner yet. Consensus scoring,
-fact-check tools, a judge model, persistence, and streaming are natural next layers, but keeping
-the first foundation transparent makes disagreements inspectable.
+The synthesis is not treated as an opaque declaration of truth. Its source responses remain in
+the audit ledger, and the UI lets users inspect the exact prompt used to produce it. External
+fact-check tools, confidence scoring, and streaming remain natural future layers.
 
 ## Setup
 
@@ -51,9 +54,14 @@ GET /v1/runs/{run_id}
 
 ## Local interaction browser
 
-The React interface in `ui/` presents stored runs as a spreadsheet-style interaction ledger.
-It groups exchanges by iteration level, color-codes providers, and opens the full prompt and answer
-when a row is selected.
+The React interface in `ui/` presents stored runs as a spreadsheet-style interaction ledger. A
+conclusion panel summarizes each completed interaction, while the evidence table retains every
+provider response by review level. Selecting **Inspect synthesis inputs** reveals the exact final
+responses supplied to the synthesis engine. Selecting **Export training record (.jsonl)** downloads
+a portable record containing a conventional user/assistant message pair plus Cross Talker
+provenance: the run identifier, final provider responses, synthesis input, provider/model names,
+review depth, and timestamps. The export stays in the browser; the API does not write arbitrary
+paths on the host machine.
 
 Start the Python API:
 
@@ -73,6 +81,43 @@ pnpm dev
 Open `http://localhost:3000`. The UI reads history from `http://localhost:8000` by default.
 Set `NEXT_PUBLIC_API_URL` before starting the UI if the API uses another address.
 
+To stop both local services listening on ports 3000 and 8000:
+
+```bash
+./scripts/reset.sh
+```
+
+The reset script attempts a graceful shutdown and only forces termination if a process remains
+after five seconds. It is safe to run when one or both services are already stopped.
+
+### HTTPS on the local network
+
+Start both services with HTTPS and expose them to other devices on the `192.168.4.x` local
+network:
+
+```bash
+./scripts/dev-network.sh
+```
+
+The script generates a 30-day development certificate under `.certs/`, binds both services to all
+network interfaces, and prints the detected LAN URL. For example:
+
+```text
+https://192.168.4.25:3000
+```
+
+The API is available on the same hostname at port 8000. The UI derives that API address from the
+hostname used in the browser, so a phone or another computer does not attempt to connect to its own
+`localhost`.
+
+Because this is a self-signed development certificate, import and trust `.certs/dev.crt` on each
+device before opening the URL. Set `CROSS_TALKER_LAN_IP` when automatic address detection chooses
+the wrong network interface:
+
+```bash
+CROSS_TALKER_LAN_IP=192.168.4.25 ./scripts/dev-network.sh
+```
+
 ## Example
 
 ```bash
@@ -85,8 +130,9 @@ curl http://localhost:8000/v1/cross-talk \
   }'
 ```
 
-`rounds: 0` returns only the independent initial answers. `rounds: 2` performs two subsequent
-peer-review passes. The configured maximum prevents accidentally expensive requests.
+`rounds: 0` skips peer review but still produces a conclusion from the independent answer set.
+`rounds: 2` performs two peer-review passes followed by one synthesis call. The configured maximum
+prevents accidentally expensive requests.
 
 ## Use as a library
 
@@ -165,9 +211,10 @@ NUM_PROMPTS=10 CROSS_TALK_ROUNDS=5 RUN_CROSS_TALK_TESTS=1 \
 
 `RUN_CROSS_TALK_TESTS` is an enable flag and must be `1`; it is not the run count. This produces
 two independent answers at level 0, then passes each answer to the other model for the requested
-number of review levels. The test confirms that every engineered prompt contains
+number of review levels, followed by one synthesis call. The test confirms that every engineered prompt contains
 only the peer's previous answer and that all prompts, replies, providers, levels, and timestamps
 are persisted to the configured `data/cross_talker.db`. The round count defaults to 2 and is
-limited to 100. Because two providers are called at every level, 100 review levels generate 202
-billable API calls including the two initial responses. Set `LIVE_TEST_DATABASE_PATH` if you
+limited to 100. Because two providers are called at every level and the lead provider performs the
+final synthesis, 100 review levels generate 203 billable API calls including the two initial
+responses. Set `LIVE_TEST_DATABASE_PATH` if you
 explicitly want a different database.
