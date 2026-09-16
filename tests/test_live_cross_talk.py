@@ -86,7 +86,8 @@ async def test_live_models_cross_check_each_other() -> None:
                     )
                     assert all(answer["content"] for answer in level["answers"])
 
-                # Every reviewer receives only the peer's immediately preceding answer.
+                # Each turn receives the accumulated transcript, including the turn that
+                # immediately preceded it in the same conversation round.
                 for level_number in range(1, rounds + 1):
                     previous = {
                         answer["provider"]: answer["content"]
@@ -97,16 +98,15 @@ async def test_live_models_cross_check_each_other() -> None:
                         for answer in result["history"][level_number]["answers"]
                     }
                     assert previous["anthropic"] in current["openai"]["prompt_sent"]
-                    assert previous["openai"] not in current["openai"]["prompt_sent"]
-                    assert previous["openai"] in current["anthropic"]["prompt_sent"]
-                    assert previous["anthropic"] not in current["anthropic"]["prompt_sent"]
+                    assert previous["openai"] in current["openai"]["prompt_sent"]
+                    assert current["openai"]["content"] in current["anthropic"]["prompt_sent"]
 
                 stored_response = await client.get(f"/v1/runs/{result['run_id']}")
                 assert stored_response.status_code == 200
                 stored = stored_response.json()
                 assert stored["status"] == "completed"
                 assert stored["rounds_requested"] == rounds
-                assert len(stored["exchanges"]) == 2 * (rounds + 1)
+                assert len(stored["exchanges"]) == 2 * (rounds + 1) + 1
 
                 for level_number in range(rounds + 1):
                     saved_level = [

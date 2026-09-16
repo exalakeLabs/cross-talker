@@ -503,7 +503,7 @@ export default function Home() {
                         >
                           <td className="level">
                             <b>{exchange.round}</b>
-                            <small>{exchange.round ? "Review" : "Initial"}</small>
+                            <small>{exchange.round ? "Conversation" : "Initial"}</small>
                           </td>
                           <td>
                             <div className={`provider ${exchange.provider}`}>
@@ -805,11 +805,11 @@ export default function Home() {
 
               <label className="round-field">
                 <span>
-                  Review levels
+                  Conversation rounds
                   <small>
                     {selectedProviders.length < 2
-                      ? "A second model is required for cross-checking."
-                      : `Each model reviews the other model at every level. Maximum ${maxRounds}.`}
+                      ? "A second model is required for a conversation."
+                      : `The models take sequential turns with a shared transcript. Maximum ${maxRounds}.`}
                   </small>
                 </span>
                 <input

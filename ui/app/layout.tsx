@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Cross Talker — Interaction Ledger",
-  description: "Browse model conversations, review rounds, prompts, and answers.",
+  description: "Browse model conversations, agent turns, prompts, and answers.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

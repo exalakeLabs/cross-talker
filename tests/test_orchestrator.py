@@ -21,7 +21,7 @@ class FakeProvider:
 
 
 @pytest.mark.asyncio
-async def test_distributes_and_cross_checks_answers() -> None:
+async def test_distributes_and_runs_sequential_conversation() -> None:
     alpha = FakeProvider("alpha")
     beta = FakeProvider("beta")
     service = CrossTalker([alpha, beta], default_rounds=1)
@@ -37,13 +37,15 @@ async def test_distributes_and_cross_checks_answers() -> None:
     assert result.conclusion.content == "alpha answer 3"
     assert "beta answer 1" in alpha.prompts[1]
     assert "alpha answer 1" in beta.prompts[1]
-    assert "alpha answer 1" not in alpha.prompts[1]
+    assert "alpha answer 1" in alpha.prompts[1]
+    assert "alpha answer 2" not in alpha.prompts[1]
+    assert "alpha answer 2" in beta.prompts[1]
     assert "alpha answer 2" in alpha.prompts[2]
     assert "beta answer 2" in alpha.prompts[2]
 
 
 @pytest.mark.asyncio
-async def test_cross_check_prompt_names_source_and_reviewer_models() -> None:
+async def test_conversation_prompt_names_speaker_and_participants() -> None:
     gpt = FakeProvider("openai")
     claude = FakeProvider("anthropic")
     service = CrossTalker([gpt, claude], default_rounds=1)
@@ -51,19 +53,18 @@ async def test_cross_check_prompt_names_source_and_reviewer_models() -> None:
     await service.ask("What is the capital of France?")
 
     assert claude.prompts[1].startswith(
-        "This is what OpenAI responded to the original question. You are Claude. "
-        "Evaluate the response below:"
+        "You are Claude. Continue the conversation below with the other model."
     )
     assert gpt.prompts[1].startswith(
-        "This is what Anthropic responded to the original question. You are GPT. "
-        "Evaluate the response below:"
+        "You are GPT. Continue the conversation below with the other model."
     )
-    assert "--- Response from OpenAI (openai-test) ---" in claude.prompts[1]
-    assert "--- Response from Anthropic (anthropic-test) ---" in gpt.prompts[1]
+    assert "--- OpenAI (openai-test), round 0 ---" in claude.prompts[1]
+    assert "--- Anthropic (anthropic-test), round 0 ---" in gpt.prompts[1]
+    assert "openai answer 2" in claude.prompts[1]
 
 
 @pytest.mark.asyncio
-async def test_cross_check_truncates_oversized_peer_answers() -> None:
+async def test_conversation_truncates_oversized_messages() -> None:
     class VerboseProvider(FakeProvider):
         async def complete(
             self, prompt: str, *, system_prompt: str | None = None
@@ -81,7 +82,7 @@ async def test_cross_check_truncates_oversized_peer_answers() -> None:
 
     assert "x" * 1_000 in alpha.prompts[1]
     assert "x" * 1_001 not in alpha.prompts[1]
-    assert "[Peer response truncated; 1,000 characters omitted.]" in alpha.prompts[1]
+    assert "[Message truncated; 1,000 characters omitted.]" in alpha.prompts[1]
 
 
 @pytest.mark.asyncio

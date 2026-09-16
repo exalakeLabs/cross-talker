@@ -1,8 +1,8 @@
 # Cross Talker
 
 Cross Talker is a Python service layer that sends one prompt to multiple language-model
-providers, then asks each provider to critique the other providers' latest answers for a
-configurable number of rounds.
+providers, then lets the providers discuss the prompt with each other for a configurable number
+of conversation rounds.
 
 It currently includes adapters for OpenAI-compatible chat completions and Anthropic Messages.
 The core orchestration depends only on a tiny provider protocol, so Gemini, local models, or
@@ -11,9 +11,9 @@ other services can be added without changing the round-robin logic.
 ## How it works
 
 1. Round 0 sends the original prompt to all selected providers concurrently.
-2. Each cross-check round sends every model the latest answers from all *other* models.
-3. The model must inspect factual claims and reasoning, then return a corrected standalone answer.
-4. After the final review round, a lead model receives every final response and synthesizes one
+2. In each conversation round, providers take sequential turns using a shared transcript.
+3. Each provider responds directly to the latest message and advances the discussion.
+4. After the final conversation round, a lead model receives every final response and synthesizes one
    standalone conclusion that preserves consensus, exposes disagreements, and states uncertainty.
 5. The API returns the full round history, each provider's final answer, and the synthesis.
 
@@ -43,11 +43,12 @@ Add API keys to `.env`, then start the service:
 cross-talker
 ```
 
-Provider calls default to a 120-second timeout with one retry. Cross-check prompts include at
-most 8,000 characters from each peer response, and provider outputs are capped at 2,048 tokens
-to prevent later review rounds from growing without bound. These limits can be adjusted with
+Provider calls default to a 120-second timeout with one retry. Conversation prompts include at
+most 8,000 characters from each message and 24,000 characters of recent transcript; provider
+outputs are capped at 2,048 tokens to keep later rounds bounded. These limits can be adjusted with
 `CROSS_TALKER_REQUEST_TIMEOUT_SECONDS`, `CROSS_TALKER_PROVIDER_RETRIES`,
-`CROSS_TALKER_MAX_OUTPUT_TOKENS`, and `CROSS_TALKER_MAX_PEER_ANSWER_CHARS`.
+`CROSS_TALKER_MAX_OUTPUT_TOKENS`, `CROSS_TALKER_MAX_PEER_ANSWER_CHARS`, and
+`CROSS_TALKER_MAX_CONVERSATION_CHARS`.
 
 Interactive API docs are available at `http://localhost:8000/docs`.
 
@@ -62,7 +63,7 @@ GET /v1/runs/{run_id}
 
 The React interface in `ui/` presents stored runs as a spreadsheet-style interaction ledger. A
 conclusion panel summarizes each completed interaction, while the evidence table retains every
-provider response by review level. Selecting **Inspect synthesis inputs** reveals the exact final
+provider response by conversation round. Selecting **Inspect synthesis inputs** reveals the exact final
 responses supplied to the synthesis engine. Selecting **Export training record (.jsonl)** downloads
 a portable record containing a conventional user/assistant message pair plus Cross Talker
 provenance: the run identifier, final provider responses, synthesis input, provider/model names,
@@ -136,8 +137,8 @@ curl http://localhost:8000/v1/cross-talk \
   }'
 ```
 
-`rounds: 0` skips peer review but still produces a conclusion from the independent answer set.
-`rounds: 2` performs two peer-review passes followed by one synthesis call. The configured maximum
+`rounds: 0` skips the conversation but still produces a conclusion from the independent answers.
+`rounds: 2` performs two sequential conversation rounds followed by one synthesis call. The configured maximum
 prevents accidentally expensive requests.
 
 ## Use as a library
@@ -201,7 +202,7 @@ LIVE_TEST_SEED=<printed-seed> NUM_PROMPTS=5 RUN_LIVE_TESTS=1 \
 ```
 
 To run a live cross-talk test that pits OpenAI and Claude against each other, set the number of
-peer-review levels with `CROSS_TALK_ROUNDS`:
+conversation rounds with `CROSS_TALK_ROUNDS`:
 
 ```bash
 CROSS_TALK_ROUNDS=2 RUN_CROSS_TALK_TESTS=1 \
@@ -216,11 +217,11 @@ NUM_PROMPTS=10 CROSS_TALK_ROUNDS=5 RUN_CROSS_TALK_TESTS=1 \
 ```
 
 `RUN_CROSS_TALK_TESTS` is an enable flag and must be `1`; it is not the run count. This produces
-two independent answers at level 0, then passes each answer to the other model for the requested
-number of review levels, followed by one synthesis call. The test confirms that every engineered prompt contains
-only the peer's previous answer and that all prompts, replies, providers, levels, and timestamps
+two independent answers at level 0, then lets the models take sequential turns with the shared
+transcript for the requested number of rounds, followed by one synthesis call. The test confirms
+that each later participant can see the immediately preceding turn and that all prompts, replies, providers, levels, and timestamps
 are persisted to the configured `data/cross_talker.db`. The round count defaults to 2 and is
 limited to 100. Because two providers are called at every level and the lead provider performs the
-final synthesis, 100 review levels generate 203 billable API calls including the two initial
+final synthesis, 100 conversation rounds generate 203 billable API calls including the two initial
 responses. Set `LIVE_TEST_DATABASE_PATH` if you
 explicitly want a different database.

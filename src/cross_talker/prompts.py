@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from cross_talker.models import ProviderAnswer
 
-SYSTEM_PROMPT = """You are one participant in a multi-model review.
-Answer accurately and independently. When reviewing peer answers, identify concrete errors,
-retain correct insights, and provide your own corrected answer. Do not defer to consensus."""
+SYSTEM_PROMPT = """You are one participant in a multi-model conversation.
+Answer accurately, engage directly with the other participants, correct concrete errors, and
+advance the discussion with useful new reasoning. Do not defer to consensus."""
 
 REVIEWER_NAMES = {
     "anthropic": "Claude",
@@ -25,32 +25,29 @@ def _provider_name(provider: str) -> str:
     return PROVIDER_NAMES.get(provider.lower(), provider)
 
 
-def build_review_prompt(
+def build_conversation_prompt(
     original_prompt: str,
-    reviewer: str,
-    peer_answers: list[ProviderAnswer],
+    speaker: str,
+    conversation: list[ProviderAnswer],
     round_number: int,
     max_peer_answer_chars: int = 8_000,
+    max_conversation_chars: int = 24_000,
 ) -> str:
-    reviewer_name = _reviewer_name(reviewer)
-    peer_names = ", ".join(_provider_name(answer.provider) for answer in peer_answers)
-    rendered = "\n\n".join(
-        f"--- Response from {_provider_name(answer.provider)} ({answer.model}) ---\n"
-        f"{_bounded_answer(answer.content, max_peer_answer_chars)}"
-        for answer in peer_answers
+    speaker_name = _reviewer_name(speaker)
+    rendered = _render_conversation(
+        conversation,
+        max_message_chars=max_peer_answer_chars,
+        max_conversation_chars=max_conversation_chars,
     )
-    prefix = (
-        f"This is what {peer_names} responded to the original question. "
-        f"You are {reviewer_name}. Evaluate the response below: identify any factual or "
-        "reasoning errors, retain correct insights, and then provide your own improved, "
-        "standalone answer to the original question."
-    )
-    return f"""{prefix}
+    return f"""You are {speaker_name}. Continue the conversation below with the other model.
+Respond directly to the latest message, address disagreements or open questions, and advance the
+discussion toward a more accurate and useful answer. Do not restart with an isolated answer or
+merely summarize the transcript.
 
 Original question:
 {original_prompt}
 
-This is cross-check round {round_number}.
+Conversation round {round_number}, your turn:
 
 {rendered}"""
 
@@ -59,7 +56,35 @@ def _bounded_answer(content: str, limit: int) -> str:
     if len(content) <= limit:
         return content
     omitted = len(content) - limit
-    return f"{content[:limit]}\n\n[Peer response truncated; {omitted:,} characters omitted.]"
+    return f"{content[:limit]}\n\n[Message truncated; {omitted:,} characters omitted.]"
+
+
+def _render_conversation(
+    answers: list[ProviderAnswer],
+    *,
+    max_message_chars: int,
+    max_conversation_chars: int,
+) -> str:
+    blocks = [
+        f"--- {_provider_name(answer.provider)} ({answer.model}), round {answer.round} ---\n"
+        f"{_bounded_answer(answer.content, max_message_chars)}"
+        for answer in answers
+    ]
+    selected: list[str] = []
+    used = 0
+    for block in reversed(blocks):
+        separator = 2 if selected else 0
+        remaining = max_conversation_chars - used - separator
+        if remaining <= 0:
+            break
+        selected.append(block if len(block) <= remaining else block[-remaining:])
+        used += min(len(block), remaining) + separator
+        if len(block) > remaining:
+            break
+    selected.reverse()
+    omitted = len(blocks) - len(selected)
+    prefix = f"[{omitted} earlier conversation messages omitted.]\n\n" if omitted else ""
+    return prefix + "\n\n".join(selected)
 
 
 def build_conclusion_prompt(

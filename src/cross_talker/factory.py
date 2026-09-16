@@ -50,5 +50,6 @@ def build_cross_talker(
         default_rounds=settings.default_rounds,
         max_rounds=settings.max_rounds,
         max_peer_answer_chars=settings.max_peer_answer_chars,
+        max_conversation_chars=settings.max_conversation_chars,
         repository=repository or SQLiteRepository(settings.database_path),
     )

@@ -13,8 +13,8 @@ from cross_talker.models import CrossTalkResponse, ProviderAnswer, RoundResult, 
 from cross_talker.prompts import (
     SYSTEM_PROMPT,
     build_conclusion_prompt,
+    build_conversation_prompt,
     build_recap_prompt,
-    build_review_prompt,
 )
 from cross_talker.providers.base import ModelProvider
 from cross_talker.storage import SQLiteRepository
@@ -23,7 +23,7 @@ logger = logging.getLogger("uvicorn.error")
 
 
 class CrossTalker:
-    """Distributes a prompt and iteratively cross-checks provider responses."""
+    """Distributes a prompt, then lets providers continue a shared conversation."""
 
     def __init__(
         self,
@@ -32,6 +32,7 @@ class CrossTalker:
         default_rounds: int = 1,
         max_rounds: int = 20,
         max_peer_answer_chars: int = 8_000,
+        max_conversation_chars: int = 24_000,
         repository: SQLiteRepository | None = None,
     ) -> None:
         self._providers: Mapping[str, ModelProvider] = {
@@ -42,6 +43,7 @@ class CrossTalker:
         self.default_rounds = default_rounds
         self.max_rounds = max_rounds
         self.max_peer_answer_chars = max_peer_answer_chars
+        self.max_conversation_chars = max_conversation_chars
         self.repository = repository or SQLiteRepository(":memory:")
 
     @property
@@ -61,7 +63,7 @@ class CrossTalker:
             raise ConfigurationError(f"rounds must be between 0 and {self.max_rounds}")
         if round_count > 0 and len(selected) < 2:
             raise ConfigurationError(
-                "Cross-check rounds require at least two providers; use rounds=0 "
+                "Conversation rounds require at least two providers; use rounds=0 "
                 "for a single-provider run"
             )
 
@@ -72,7 +74,10 @@ class CrossTalker:
             latest = initial
 
             for round_number in range(1, round_count + 1):
-                latest = await self._run_review(run_id, prompt, selected, latest, round_number)
+                transcript = [answer for level in history for answer in level.answers]
+                latest = await self._run_conversation_round(
+                    run_id, prompt, selected, transcript, round_number
+                )
                 history.append(RoundResult(round=round_number, answers=latest))
 
             conclusion = await self._call(
@@ -151,26 +156,30 @@ class CrossTalker:
             [self._call(run_id, provider, prompt, round_number=0) for provider in providers]
         )
 
-    async def _run_review(
+    async def _run_conversation_round(
         self,
         run_id: str,
         prompt: str,
         providers: list[ModelProvider],
-        previous: list[ProviderAnswer],
+        transcript: list[ProviderAnswer],
         round_number: int,
     ) -> list[ProviderAnswer]:
-        calls = []
+        answers: list[ProviderAnswer] = []
         for provider in providers:
-            peers = [answer for answer in previous if answer.provider != provider.name]
-            review_prompt = build_review_prompt(
+            conversation_prompt = build_conversation_prompt(
                 prompt,
                 provider.name,
-                peers,
+                transcript,
                 round_number,
                 max_peer_answer_chars=self.max_peer_answer_chars,
+                max_conversation_chars=self.max_conversation_chars,
             )
-            calls.append(self._call(run_id, provider, review_prompt, round_number=round_number))
-        return await self._gather(calls)
+            answer = await self._call(
+                run_id, provider, conversation_prompt, round_number=round_number
+            )
+            answers.append(answer)
+            transcript.append(answer)
+        return answers
 
     async def _call(
         self,
