@@ -1,6 +1,6 @@
 # Cross Talker
 
-Cross Talker is a Python service layer that sends one prompt to multiple language-model
+Cross Talker is a  service layer that sends one prompt to multiple language-model
 providers, then lets the providers discuss the prompt with each other for a configurable number
 of conversation rounds.
 
